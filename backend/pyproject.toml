@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=75,<85"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "csrs-backend"
+version = "0.1.0"
+description = "Concurrency-safe reservation system: Phase 1 foundation"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+  "fastapi>=0.162,<0.163",
+  "uvicorn>=0.30,<1",
+  "pydantic>=2.9,<3",
+  "pydantic-settings>=2.5,<3",
+  "SQLAlchemy>=2.0.35,<2.1",
+  "psycopg[binary]>=3.2,<4",
+  "alembic>=1.13,<2",
+]
+
+[project.optional-dependencies]
+dev = [
+  "httpx2>=2.0,<3",
+  "pytest>=8.3,<10",
+  "ruff>=0.12,<1",
+  "PyYAML>=6.0,<7",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers --strict-config"
+markers = [
+  "integration: requires a dedicated real PostgreSQL database",
+]
+filterwarnings = ["error"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]

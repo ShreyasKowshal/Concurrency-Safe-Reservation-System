@@ -1,0 +1,72 @@
+openapi: 3.1.0
+info:
+  title: CSRS
+  description: Phase 1 foundation. Only health endpoints are implemented.
+  version: 0.1.0
+paths:
+  /api/v1/health/live:
+    get:
+      tags:
+      - health
+      summary: Liveness
+      operationId: liveness_api_v1_health_live_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LivenessResponse'
+  /api/v1/health/ready:
+    get:
+      tags:
+      - health
+      summary: Readiness
+      operationId: readiness_api_v1_health_ready_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadinessResponse'
+        '503':
+          description: PostgreSQL unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadinessResponse'
+components:
+  schemas:
+    LivenessResponse:
+      properties:
+        status:
+          type: string
+          const: alive
+          title: Status
+          default: alive
+      type: object
+      title: LivenessResponse
+    ReadinessResponse:
+      properties:
+        status:
+          type: string
+          enum:
+          - ready
+          - not_ready
+          title: Status
+        dependencies:
+          additionalProperties:
+            type: string
+            enum:
+            - up
+            - down
+          propertyNames:
+            const: postgresql
+          type: object
+          title: Dependencies
+      type: object
+      required:
+      - status
+      - dependencies
+      title: ReadinessResponse

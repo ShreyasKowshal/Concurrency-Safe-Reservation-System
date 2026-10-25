@@ -1,0 +1,98 @@
+name: Foundation CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: foundation-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: csrs_test
+          POSTGRES_PASSWORD: ci_example_only
+          POSTGRES_DB: csrs_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U csrs_test -d csrs_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      CSRS_TEST_DATABASE_URL: postgresql+psycopg://csrs_test:ci_example_only@localhost:5432/csrs_test
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            backend/pyproject.toml
+            backend/requirements-dev.lock
+      - name: Install backend and test tools
+        run: python -m pip install -c backend/requirements-dev.lock -e './backend[dev]'
+      - name: Lint
+        run: python -m ruff check backend
+      - name: Check formatting
+        run: python -m ruff format --check backend
+      - name: Unit and contract tests
+        run: python -m pytest backend/tests -m 'not integration'
+      - name: PostgreSQL integration tests (required)
+        run: python -m pytest backend/tests/integration
+      - name: Alembic revision discovery (no schema revisions in Phase 1)
+        working-directory: backend
+        run: python -m alembic heads
+
+  frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run build
+
+  compose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - name: Use public local example configuration
+        run: cp .env.example .env
+      - name: Validate Compose
+        run: docker compose config --quiet
+      - name: Build images
+        run: docker compose build backend frontend backend-test
+      - name: Exercise Compose development stack
+        run: |
+          docker compose up -d --wait --wait-timeout 120
+          curl --fail --retry 10 --retry-delay 2 --retry-connrefused http://localhost:8000/api/v1/health/live
+          curl --fail http://localhost:8000/api/v1/health/ready
+          curl --fail --retry 20 --retry-delay 2 --retry-connrefused http://localhost:5173/
+          curl --fail --retry 5 --retry-delay 2 http://localhost:5173/api/v1/health/ready
+      - name: Run tests inside Compose against isolated PostgreSQL
+        run: docker compose --profile test run --rm backend-test
+      - name: Show service logs on failure
+        if: failure()
+        run: docker compose --profile test logs --no-color
+      - name: Stop disposable CI services
+        if: always()
+        run: docker compose --profile test down --volumes

@@ -1,0 +1,17 @@
+.git
+.env*
+**/.env*
+**/*.pem
+**/*.key
+.venv
+.cache
+.local
+**/node_modules
+**/__pycache__
+**/*.egg-info
+**/.pytest_cache
+**/.ruff_cache
+**/dist
+**/*.pyc
+**/*.log
+**/*.tsbuildinfo

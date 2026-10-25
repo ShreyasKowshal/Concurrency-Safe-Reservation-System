@@ -1,0 +1,34 @@
+# Local configuration and credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Node and build output
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+
+# Local tools and editor output
+.cache/
+.local/
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+*.log
+test-results/

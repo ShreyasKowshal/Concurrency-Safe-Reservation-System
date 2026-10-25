@@ -1,0 +1,1 @@
+"""CSRS modular monolith."""

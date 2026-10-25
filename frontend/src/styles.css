@@ -1,0 +1,24 @@
+:root {
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  color: #172b3a;
+  background: #f3f6f7;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  line-height: 1.6;
+}
+
+body { margin: 0; }
+main { max-width: 760px; margin: 8vh auto; padding: 32px 24px; }
+h1 { font-size: clamp(2rem, 5vw, 3.4rem); line-height: 1.15; letter-spacing: -0.04em; }
+h2 { font-size: 1.15rem; }
+.eyebrow { font-weight: 700; color: #23665f; letter-spacing: 0.12em; text-transform: uppercase; }
+.intro { font-size: 1.15rem; color: #48606f; }
+section { margin: 32px 0; padding: 24px; border: 1px solid #cbd9de; border-radius: 12px; background: white; }
+.status { border-left: 4px solid #80939d; padding-left: 12px; }
+.status.ready { border-color: #19856d; }
+.status.database-unavailable, .status.api-unavailable { border-color: #a45a20; }
+button { font: inherit; border: 1px solid #23665f; border-radius: 6px; padding: 8px 16px; background: #23665f; color: white; cursor: pointer; }
+button:disabled { opacity: 0.6; cursor: wait; }
+button:focus-visible, a:focus-visible { outline: 3px solid #ca7a22; outline-offset: 4px; }
+.scope { color: #48606f; }
+a { color: #23665f; }
