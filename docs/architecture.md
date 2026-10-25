@@ -5,8 +5,10 @@
 Phase 1 provides configuration, application/engine lifecycle, health checks, React health UI,
 and development infrastructure. Phase 2 adds the five-table database foundation, one Alembic
 migration, backend authentication, CSRF enforcement, reusable authorization guards, and
-local administration commands. Events, booking operations, Redis limiting/caching, and the
-expiration worker remain **future contracts**, not implemented features.
+local administration commands. Phase 3 adds public event discovery and owner-only event
+create/read/edit/capacity/publish/close operations with event-row locks. Booking operations,
+Redis limiting/caching, availability/dashboard endpoints, and the expiration worker remain
+**future contracts**, not implemented features. No reservation correctness claim is made yet.
 
 ## Modular monolith
 
@@ -14,7 +16,7 @@ The React browser client calls `/api/v1` on its own origin. In development Vite 
 that path to FastAPI without rewriting the browser's Origin header. In the planned deployment,
 the backend serves the built frontend from the same origin.
 
-FastAPI handles transport/validation. Domain services will own transaction boundaries and
+FastAPI handles transport/validation. Authentication/event services own transaction boundaries and
 authorization decisions. SQLAlchemy supplies synchronous sessions and database access.
 PostgreSQL owns durable users, sessions, events, reservations, capacity, and idempotency.
 Alembic owns schema evolution. Each request/worker transaction gets an independent session;
@@ -69,7 +71,7 @@ instead must be documented accurately. No cloud services are created in this pha
 ## Interview explanation
 
 The monolith keeps one deployable backend and one transaction boundary for the important work.
-Horizontal API scaling does not change correctness because serialization happens in PostgreSQL.
+Phase 3 organizer writes serialize in PostgreSQL; later reservation writers must use that same lock.
 The event lock is deliberately a contention point for one event; unrelated events use different
 rows. We will measure the cost before considering a more complicated inventory design.
 
@@ -79,7 +81,7 @@ See [database design](database.md), [transaction protocol](concurrency.md),
 
 ## System architecture diagram
 
-This diagram combines the running Phase 1-2 foundation with the planned Phase 3-7 additions.
+This diagram combines implemented Phases 1-3 with the planned Phase 4-7 additions.
 **Solid arrows show implemented communication; dashed arrows show planned communication.**
 Node labels also state the boundary, so the distinction does not depend on color.
 The React application currently displays health information only. Authentication is available
@@ -87,21 +89,24 @@ through the backend API, but React authentication and booking screens are not im
 
 ```mermaid
 flowchart TB
-    Web["React + TypeScript<br/>Phase 1-2: health screen<br/>Phase 7: account and booking screens planned"]
-    Client["Cookie-aware API client<br/>Can use Phase 2 authentication now"]
+    Web["React + TypeScript<br/>Phase 1-3: health screen<br/>Phase 7: account and booking screens planned"]
+    Client["Cookie-aware API client<br/>Auth and event APIs usable now"]
 
     subgraph Backend["FastAPI modular monolith: implemented modules and planned additions"]
-        Api["FastAPI HTTP routes<br/>Health and auth implemented"]
+        Api["FastAPI HTTP routes<br/>Health, auth, and events implemented"]
         Auth["Authentication services<br/>Cookie sessions, passwords, CSRF<br/>Phase 2 implemented"]
         Guards["Current-user dependency<br/>Reusable role and ownership guards<br/>Phase 2 implemented"]
-        Domain["Event and reservation services<br/>Phases 3-4 planned"]
+        Events["Event service<br/>Phase 3 implemented<br/>Owned writes lock the event row"]
+        Reservations["Reservation service<br/>Phase 4 planned"]
         Orm["SQLAlchemy synchronous sessions<br/>Implemented database access"]
         Api -->|"Auth routes"| Auth
         Api -->|"Current-user check"| Guards
         Auth --> Orm
         Guards --> Orm
-        Api -.->|"Event and booking routes"| Domain
-        Domain -.->|"Transactions and event-row locks"| Orm
+        Api -->|"Public discovery and organizer commands"| Events
+        Events -->|"SQL reads and locked write transactions"| Orm
+        Api -.->|"Booking routes"| Reservations
+        Reservations -.->|"Reservation and counter transactions"| Orm
     end
 
     Pg[("PostgreSQL<br/>Five application tables implemented<br/>Source of truth")]
@@ -110,18 +115,18 @@ flowchart TB
     Disk["Persistent development Docker volume"]
 
     Web -->|"Health HTTP requests through Vite /api proxy"| Api
-    Client -->|"Auth HTTP requests: JSON, cookie, CSRF as required"| Api
+    Client -->|"Auth/event HTTP requests: JSON, cookie, CSRF as required"| Api
     Web -.->|"Phase 7: account, event, and booking requests"| Api
     Orm -->|"SQL through Psycopg"| Pg
     Pg -->|"Durable database files"| Disk
     Api -.->|"Phase 6: rate limits and public metadata cache"| Redis
-    Worker -.->|"Calls the shared reservation service; no HTTP hop"| Domain
+    Worker -.->|"Calls the shared reservation service; no HTTP hop"| Reservations
 
     classDef implemented fill:#e8f2ff,stroke:#245a81,color:#172b3a;
     classDef planned fill:#fff4da,stroke:#865c13,color:#3a2b13,stroke-dasharray:5 5;
     classDef provisioned fill:#f1ecff,stroke:#63508c,color:#302446;
-    class Web,Client,Api,Auth,Guards,Orm,Pg,Disk implemented;
-    class Domain,Worker planned;
+    class Web,Client,Api,Auth,Guards,Events,Orm,Pg,Disk implemented;
+    class Reservations,Worker planned;
     class Redis provisioned;
 ```
 
@@ -132,16 +137,17 @@ flowchart TB
   the browser's Origin header. The current screen calls readiness, not the auth endpoints.
 - **Backend:** FastAPI receives HTTP requests and validates their format. A modular monolith
   means the backend is one application with separate modules, rather than several network
-  services. Planned event and reservation modules will live in that same application.
+  services. The event module is implemented; the planned reservation module will live in
+  that same application.
 - **Authentication and authorization:** authentication identifies a user from a valid
   database-backed session. Authorization checks what that user may do. Phase 2 implements
-  current-user checks and reusable role/ownership guards; future event routes must actually
-  apply those guards to stored resources. An attendee cannot request organizer status in
+  current-user checks and reusable role/ownership guards; Phase 3 applies them to organizer
+  reads and transactions against stored events. An attendee cannot request organizer status in
   registration. A local administrator can promote an existing account through the CLI.
 - **SQLAlchemy and PostgreSQL:** SQLAlchemy translates database operations into SQL and
   manages transactions. Psycopg is the driver carrying that SQL to PostgreSQL. A transaction
   groups changes so they commit together or roll back together. PostgreSQL already stores
-  users and sessions; event, reservation, and idempotency tables exist but their command
+  users, sessions, and managed events. Reservation/idempotency tables exist but their command
   services do not. A SQLAlchemy database session is different from a user's login session.
 - **Redis:** its container runs, but there is no application Redis client yet. Phase 6 plans
   request rate limits and short-lived public event metadata caching. A rate limit restricts
@@ -160,9 +166,10 @@ reservation behavior in the current application.
 
 ## Application workflow diagram
 
-The first group below is implemented backend authentication. The second group describes
-**planned** event and reservation behavior; it is not a set of currently working screens.
-Phase 3 covers event management/public reads, Phase 4 covers reservation commands and
+The first group below is implemented backend authentication. In the second group, event
+creation/publication/public reads are implemented in Phase 3; the reservation journey remains
+**planned**. These are backend capabilities, not currently working event/account screens.
+Phase 4 covers reservation commands and
 request-time expiration, Phase 5 adds the worker, Phase 6 adds Redis protections, and Phase 7
 adds the user-facing event and booking interface. See [delivery phases](phases.md).
 
@@ -180,7 +187,7 @@ flowchart TD
     end
 
     Visitor["Visitor without login"]
-    subgraph Journeys["Planned in Phases 3-7: event and reservation journeys"]
+    subgraph Journeys["Phase 3 event APIs implemented; Phase 4-7 reservation journey and screens planned"]
         Draft["Phase 3: owning organizer creates draft<br/>Set details, schedule, and capacity"]
         Publish["Phase 3: publish event<br/>DRAFT to PUBLISHED"]
         Browse["Phase 3 public API; Phase 7 screens<br/>Browse published events and advisory availability"]
@@ -194,7 +201,7 @@ flowchart TD
 
         Draft --> Publish
         Publish --> Browse
-        Browse --> SignedIn
+        Browse -.-> SignedIn
         SignedIn -->|"Yes"| Hold
         Hold -->|"If checks fail, no new allocation"| Rejected
         Hold -->|"Confirm before hold deadline"| Confirmed
@@ -206,15 +213,15 @@ flowchart TD
         Rebook --> Browse
     end
 
-    Identity -.->|"Provisioned ORGANIZER"| Draft
-    Identity -.->|"Attendee, or organizer attending an event"| Browse
-    Visitor -.->|"Browsing will be public"| Browse
+    Identity -->|"Provisioned ORGANIZER"| Draft
+    Identity -->|"Attendee, or organizer attending an event"| Browse
+    Visitor -->|"Public discovery"| Browse
     SignedIn -.->|"No: authenticate, then return to the event"| Bootstrap
 
     classDef implemented fill:#e8f2ff,stroke:#245a81,color:#172b3a;
     classDef planned fill:#fff4da,stroke:#865c13,color:#3a2b13,stroke-dasharray:5 5;
-    class Bootstrap,Register,Login,Identity implemented;
-    class Draft,Publish,Browse,SignedIn,Hold,Rejected,Confirmed,Cancelled,Expired,Rebook planned;
+    class Bootstrap,Register,Login,Identity,Draft,Publish,Browse implemented;
+    class SignedIn,Hold,Rejected,Confirmed,Cancelled,Expired,Rebook planned;
 ```
 
 ### How to read the application workflow
@@ -225,10 +232,10 @@ flowchart TD
    and a trusted Origin or allowed Referer fallback. Login replaces the anonymous session
    with a new authenticated session. All account paths in this diagram have the `/api/v1`
    prefix in actual requests. These backend endpoints are implemented; React forms are not.
-2. **Manage an event later:** a provisioned organizer will create a draft and publish it.
-   Role and stored event ownership must both be checked. Public registration only creates
-   attendees. Published events will become browsable without login, while requesting a hold
-   requires authentication. Organizers may also attend events.
+2. **Manage an event now through the API:** a provisioned organizer can create a draft and
+   publish it. Role and stored event ownership are checked. Public registration only creates
+   attendees. Published events are browsable without login; the future hold endpoint will
+   require authentication. Organizers may also attend events when booking is implemented.
 3. **Hold a seat later:** a hold temporarily counts as one allocated seat. The planned
    deadline is the earlier of the decision time plus the configured hold TTL (initially
    five minutes) and the event's booking deadline. TTL means time to live. No hold can be
@@ -248,17 +255,20 @@ Confirmation will preserve that allocation. Cancellation or expiration will retu
 The browser's availability display will be a snapshot, not a guarantee that a later hold wins.
 Phase 6 rate limiting/caching will support these flows without replacing the database checks.
 
-The diagram omits some planned actions to stay readable: organizers will also close events
-and edit permitted capacity/metadata. Event status changes and capacity edits must take the
-same event lock. Closing stops new holds but does not invalidate an otherwise valid existing
-hold. All these event/reservation actions remain unimplemented at the end of Phase 2.
+The diagram omits some implemented Phase 3 actions to stay readable: organizers can close
+events and edit permitted capacity/metadata. Existing-event writes take the same event-row
+lock. Closing leaves allocations unchanged so future valid holds can still confirm.
+Capacity edits currently compare against stored allocated_seats without expiring any rows.
+Phase 4 must add shared due-hold cleanup under that lock; Phase 3 may conservatively refuse
+a reduction when stored HELD rows are overdue. No booking endpoint exists yet.
 
 ## Concurrency-safe reservation workflow
 
 **The following sequence is the planned Phase 4 hold-creation protocol, not implemented code.**
 Its database foundation, READ COMMITTED engine setting, and authentication helpers exist in
-Phase 2. The reservation transaction, event-row locking, idempotency service, and capacity
-updates still need implementation and concurrency tests. Phase 5 will reuse the locking
+Phase 2. Phase 3 implements event-row locking for organizer edits and lifecycle changes.
+The reservation transaction, its use of that same lock, reservation counter updates, and
+idempotency service still need implementation and concurrency tests. Phase 5 will reuse the locking
 rules for the worker; Phase 6 will add rate limiting before the capacity transaction.
 
 ```mermaid
@@ -351,7 +361,7 @@ For example, suppose nine of ten seats are allocated and two attendees request t
 seat. The first future transaction locks the event, sees nine, and commits ten. The second
 waits, then sees ten after obtaining the lock and returns a stored EVENT_FULL conflict
 unless a due hold has made room. Neither request may admit using a previously cached count.
-This is the intended correctness argument, not a race test already passed by Phase 2.
+This is the intended booking correctness argument, not a reservation race test passed by Phase 3.
 
 If a response is lost after a successful commit, the client must retry with the **same key**
 to retrieve the original outcome. A connection failure during commit leaves the outcome
@@ -360,7 +370,7 @@ outcome, so the client should then fetch the current resource state. Lock timeou
 database failures require rollback and a retryable response, not a completed business error.
 
 Confirmation will change HELD to CONFIRMED without increasing the counter. Cancellation and
-expiration will decrement only when they actually transition a counted row. Capacity edits
-and publication/closing must participate in the same event-lock protocol. Future concurrent
+expiration will decrement only when they actually transition a counted row. Phase 3 capacity
+edits and publication/closing already take that event lock. Future concurrent
 and failure-injection tests must check both counter bounds and cross-table equality using
-real PostgreSQL; the current schema/authentication tests do not establish those guarantees.
+real PostgreSQL; schema/authentication/event tests do not establish those booking guarantees.

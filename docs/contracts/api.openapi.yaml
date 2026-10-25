@@ -1,8 +1,8 @@
 openapi: 3.1.0
 info:
   title: CSRS
-  description: CSRS health and session authentication. Booking routes are not implemented.
-  version: 0.2.0
+  description: CSRS health, authentication, and event management. Booking is not implemented
+  version: 0.3.0
 paths:
   /api/v1/health/live:
     get:
@@ -279,6 +279,641 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
       security:
       - SessionCookie: []
+  /api/v1/events:
+    get:
+      tags:
+      - public events
+      summary: Public Events
+      description: Published events only, ordered by starts_at and id. No booking
+        guarantee.
+      operationId: public_events_api_v1_events_get
+      parameters:
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 100
+          minimum: 1
+          default: 20
+          title: Limit
+      - name: cursor
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            minLength: 1
+            maxLength: 512
+          - type: 'null'
+          title: Cursor
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicEventPage'
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '422':
+          description: Invalid request fields, combined schedule, or pagination cursor.
+          content:
+            application/json:
+              schema:
+                anyOf:
+                - $ref: '#/components/schemas/HTTPValidationError'
+                - $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Service Unavailable
+  /api/v1/events/{event_id}:
+    get:
+      tags:
+      - public events
+      summary: Public Event
+      operationId: public_event_api_v1_events__event_id__get
+      parameters:
+      - name: event_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Event Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventDetail'
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '422':
+          description: Invalid request fields, combined schedule, or pagination cursor.
+          content:
+            application/json:
+              schema:
+                anyOf:
+                - $ref: '#/components/schemas/HTTPValidationError'
+                - $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Service Unavailable
+  /api/v1/organizer/events:
+    get:
+      tags:
+      - organizer events
+      summary: Own Events
+      description: Only the authenticated organizer's events, including drafts and
+        closed events.
+      operationId: own_events_api_v1_organizer_events_get
+      parameters:
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 100
+          minimum: 1
+          default: 20
+          title: Limit
+      - name: cursor
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            minLength: 1
+            maxLength: 512
+          - type: 'null'
+          title: Cursor
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrganizerEventPage'
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
+        '415':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unsupported Media Type
+        '503':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Service Unavailable
+        '422':
+          description: Invalid request fields, combined schedule, or pagination cursor.
+          content:
+            application/json:
+              schema:
+                anyOf:
+                - $ref: '#/components/schemas/HTTPValidationError'
+                - $ref: '#/components/schemas/ErrorResponse'
+      security:
+      - SessionCookie: []
+    post:
+      tags:
+      - organizer events
+      summary: Create
+      operationId: create_api_v1_organizer_events_post
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EventCreate'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrganizerEvent'
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
+        '415':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unsupported Media Type
+        '503':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Service Unavailable
+        '422':
+          description: Invalid request fields, combined schedule, or pagination cursor.
+          content:
+            application/json:
+              schema:
+                anyOf:
+                - $ref: '#/components/schemas/HTTPValidationError'
+                - $ref: '#/components/schemas/ErrorResponse'
+      security:
+      - SessionCookie: []
+        CsrfToken: []
+      parameters:
+      - name: Origin
+        in: header
+        required: false
+        description: Trusted Origin, or Referer fallback, is required.
+        schema:
+          type: string
+  /api/v1/organizer/events/{event_id}:
+    get:
+      tags:
+      - organizer events
+      summary: Own Event
+      operationId: own_event_api_v1_organizer_events__event_id__get
+      parameters:
+      - name: event_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Event Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrganizerEvent'
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
+        '415':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unsupported Media Type
+        '503':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Service Unavailable
+        '422':
+          description: Invalid request fields, combined schedule, or pagination cursor.
+          content:
+            application/json:
+              schema:
+                anyOf:
+                - $ref: '#/components/schemas/HTTPValidationError'
+                - $ref: '#/components/schemas/ErrorResponse'
+      security:
+      - SessionCookie: []
+    patch:
+      tags:
+      - organizer events
+      summary: Edit
+      operationId: edit_api_v1_organizer_events__event_id__patch
+      parameters:
+      - name: event_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Event Id
+      - name: Origin
+        in: header
+        required: false
+        description: Trusted Origin, or Referer fallback, is required.
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EventPatch'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrganizerEvent'
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
+        '415':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unsupported Media Type
+        '503':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Service Unavailable
+        '422':
+          description: Invalid request fields, combined schedule, or pagination cursor.
+          content:
+            application/json:
+              schema:
+                anyOf:
+                - $ref: '#/components/schemas/HTTPValidationError'
+                - $ref: '#/components/schemas/ErrorResponse'
+      security:
+      - SessionCookie: []
+        CsrfToken: []
+  /api/v1/organizer/events/{event_id}/capacity:
+    patch:
+      tags:
+      - organizer events
+      summary: Capacity
+      operationId: capacity_api_v1_organizer_events__event_id__capacity_patch
+      parameters:
+      - name: event_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Event Id
+      - name: Origin
+        in: header
+        required: false
+        description: Trusted Origin, or Referer fallback, is required.
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CapacityUpdate'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrganizerEvent'
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
+        '415':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unsupported Media Type
+        '503':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Service Unavailable
+        '422':
+          description: Invalid request fields, combined schedule, or pagination cursor.
+          content:
+            application/json:
+              schema:
+                anyOf:
+                - $ref: '#/components/schemas/HTTPValidationError'
+                - $ref: '#/components/schemas/ErrorResponse'
+      security:
+      - SessionCookie: []
+        CsrfToken: []
+  /api/v1/organizer/events/{event_id}/publish:
+    post:
+      tags:
+      - organizer events
+      summary: Publish
+      operationId: publish_api_v1_organizer_events__event_id__publish_post
+      parameters:
+      - name: event_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Event Id
+      - name: Origin
+        in: header
+        required: false
+        description: Trusted Origin, or Referer fallback, is required.
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmptyRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrganizerEvent'
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
+        '415':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unsupported Media Type
+        '503':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Service Unavailable
+        '422':
+          description: Invalid request fields, combined schedule, or pagination cursor.
+          content:
+            application/json:
+              schema:
+                anyOf:
+                - $ref: '#/components/schemas/HTTPValidationError'
+                - $ref: '#/components/schemas/ErrorResponse'
+      security:
+      - SessionCookie: []
+        CsrfToken: []
+  /api/v1/organizer/events/{event_id}/close:
+    post:
+      tags:
+      - organizer events
+      summary: Close
+      operationId: close_api_v1_organizer_events__event_id__close_post
+      parameters:
+      - name: event_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Event Id
+      - name: Origin
+        in: header
+        required: false
+        description: Trusted Origin, or Referer fallback, is required.
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmptyRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrganizerEvent'
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
+        '415':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unsupported Media Type
+        '503':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Service Unavailable
+        '422':
+          description: Invalid request fields, combined schedule, or pagination cursor.
+          content:
+            application/json:
+              schema:
+                anyOf:
+                - $ref: '#/components/schemas/HTTPValidationError'
+                - $ref: '#/components/schemas/ErrorResponse'
+      security:
+      - SessionCookie: []
+        CsrfToken: []
 components:
   schemas:
     AuthResponse:
@@ -293,6 +928,18 @@ components:
       - csrf_token
       - user
       title: AuthResponse
+    CapacityUpdate:
+      properties:
+        capacity:
+          type: integer
+          maximum: 2147483647.0
+          minimum: 1.0
+          title: Capacity
+      additionalProperties: false
+      type: object
+      required:
+      - capacity
+      title: CapacityUpdate
     CsrfResponse:
       properties:
         csrf_token:
@@ -347,6 +994,187 @@ components:
       required:
       - error
       title: ErrorResponse
+    EventCreate:
+      properties:
+        title:
+          type: string
+          maxLength: 200
+          minLength: 1
+          title: Title
+        description:
+          type: string
+          maxLength: 10000
+          title: Description
+          default: ''
+        location:
+          type: string
+          maxLength: 300
+          minLength: 1
+          title: Location
+        starts_at:
+          type: string
+          format: date-time
+          title: Starts At
+        ends_at:
+          type: string
+          format: date-time
+          title: Ends At
+        booking_closes_at:
+          type: string
+          format: date-time
+          title: Booking Closes At
+        capacity:
+          type: integer
+          maximum: 2147483647.0
+          minimum: 1.0
+          title: Capacity
+      additionalProperties: false
+      type: object
+      required:
+      - title
+      - location
+      - starts_at
+      - ends_at
+      - booking_closes_at
+      - capacity
+      title: EventCreate
+    EventDetail:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        title:
+          type: string
+          title: Title
+        location:
+          type: string
+          title: Location
+        starts_at:
+          type: string
+          format: date-time
+          title: Starts At
+        booking_closes_at:
+          type: string
+          format: date-time
+          title: Booking Closes At
+        status:
+          type: string
+          enum:
+          - DRAFT
+          - PUBLISHED
+          - CLOSED
+          title: Status
+        capacity:
+          type: integer
+          title: Capacity
+        description:
+          type: string
+          title: Description
+        ends_at:
+          type: string
+          format: date-time
+          title: Ends At
+        organizer_id:
+          type: string
+          format: uuid
+          title: Organizer Id
+      type: object
+      required:
+      - id
+      - title
+      - location
+      - starts_at
+      - booking_closes_at
+      - status
+      - capacity
+      - description
+      - ends_at
+      - organizer_id
+      title: EventDetail
+    EventPatch:
+      properties:
+        title:
+          anyOf:
+          - type: string
+            maxLength: 200
+            minLength: 1
+          - type: 'null'
+          title: Title
+        description:
+          anyOf:
+          - type: string
+            maxLength: 10000
+          - type: 'null'
+          title: Description
+        location:
+          anyOf:
+          - type: string
+            maxLength: 300
+            minLength: 1
+          - type: 'null'
+          title: Location
+        starts_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Starts At
+        ends_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Ends At
+        booking_closes_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Booking Closes At
+      additionalProperties: false
+      type: object
+      title: EventPatch
+    EventSummary:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        title:
+          type: string
+          title: Title
+        location:
+          type: string
+          title: Location
+        starts_at:
+          type: string
+          format: date-time
+          title: Starts At
+        booking_closes_at:
+          type: string
+          format: date-time
+          title: Booking Closes At
+        status:
+          type: string
+          enum:
+          - DRAFT
+          - PUBLISHED
+          - CLOSED
+          title: Status
+        capacity:
+          type: integer
+          title: Capacity
+      type: object
+      required:
+      - id
+      - title
+      - location
+      - starts_at
+      - booking_closes_at
+      - status
+      - capacity
+      title: EventSummary
     HTTPValidationError:
       properties:
         detail:
@@ -365,6 +1193,142 @@ components:
           default: alive
       type: object
       title: LivenessResponse
+    OrganizerEvent:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        title:
+          type: string
+          title: Title
+        location:
+          type: string
+          title: Location
+        starts_at:
+          type: string
+          format: date-time
+          title: Starts At
+        booking_closes_at:
+          type: string
+          format: date-time
+          title: Booking Closes At
+        status:
+          type: string
+          enum:
+          - DRAFT
+          - PUBLISHED
+          - CLOSED
+          title: Status
+        capacity:
+          type: integer
+          title: Capacity
+        description:
+          type: string
+          title: Description
+        ends_at:
+          type: string
+          format: date-time
+          title: Ends At
+        organizer_id:
+          type: string
+          format: uuid
+          title: Organizer Id
+        allocated_seats:
+          type: integer
+          title: Allocated Seats
+      type: object
+      required:
+      - id
+      - title
+      - location
+      - starts_at
+      - booking_closes_at
+      - status
+      - capacity
+      - description
+      - ends_at
+      - organizer_id
+      - allocated_seats
+      title: OrganizerEvent
+    OrganizerEventPage:
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/OrganizerEventSummary'
+          type: array
+          title: Items
+        next_cursor:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Next Cursor
+      type: object
+      required:
+      - items
+      - next_cursor
+      title: OrganizerEventPage
+    OrganizerEventSummary:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        title:
+          type: string
+          title: Title
+        location:
+          type: string
+          title: Location
+        starts_at:
+          type: string
+          format: date-time
+          title: Starts At
+        booking_closes_at:
+          type: string
+          format: date-time
+          title: Booking Closes At
+        status:
+          type: string
+          enum:
+          - DRAFT
+          - PUBLISHED
+          - CLOSED
+          title: Status
+        capacity:
+          type: integer
+          title: Capacity
+        allocated_seats:
+          type: integer
+          title: Allocated Seats
+      type: object
+      required:
+      - id
+      - title
+      - location
+      - starts_at
+      - booking_closes_at
+      - status
+      - capacity
+      - allocated_seats
+      title: OrganizerEventSummary
+    PublicEventPage:
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/EventSummary'
+          type: array
+          title: Items
+        next_cursor:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Next Cursor
+      type: object
+      required:
+      - items
+      - next_cursor
+      title: PublicEventPage
     ReadinessResponse:
       properties:
         status:

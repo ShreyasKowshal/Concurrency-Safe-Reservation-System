@@ -1,6 +1,9 @@
 # Reservation protocol and state machine
 
-**Contract for Phases 3-5. No reservation logic exists in Phase 1.**
+**Event-row locking for organizer edits/publication/closing is implemented in Phase 3.**
+Reservation commands, request-time expiration, and the worker below remain Phase 4-5 contracts.
+Phase 3 capacity edits conservatively use the stored counter; they do not clean due holds.
+Phase 4 must integrate that cleanup under the same lock before capacity edits/admission.
 
 ## Product rules
 

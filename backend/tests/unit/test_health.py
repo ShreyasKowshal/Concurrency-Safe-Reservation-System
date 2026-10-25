@@ -49,7 +49,7 @@ def test_readiness_failure_is_safe_and_liveness_survives(
     assert live.status_code == 200
 
 
-def test_business_routes_are_not_implemented(settings: Settings) -> None:
+def test_only_health_auth_and_phase_3_event_routes_are_implemented(settings: Settings) -> None:
     app = create_app(settings)
     assert set(app.openapi()["paths"]) == {
         "/api/v1/health/live",
@@ -59,4 +59,11 @@ def test_business_routes_are_not_implemented(settings: Settings) -> None:
         "/api/v1/auth/login",
         "/api/v1/auth/logout",
         "/api/v1/auth/me",
+        "/api/v1/events",
+        "/api/v1/events/{event_id}",
+        "/api/v1/organizer/events",
+        "/api/v1/organizer/events/{event_id}",
+        "/api/v1/organizer/events/{event_id}/capacity",
+        "/api/v1/organizer/events/{event_id}/publish",
+        "/api/v1/organizer/events/{event_id}/close",
     }

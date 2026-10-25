@@ -3,13 +3,14 @@
 import os
 import uuid
 from contextlib import contextmanager
+from datetime import timedelta
 from pathlib import Path
 
 import pytest
 from alembic import command
 from alembic.config import Config
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, func, select, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session
 
@@ -17,7 +18,7 @@ from csrs.auth.crypto import hash_password
 from csrs.config import Settings
 from csrs.database import create_database_engine
 from csrs.main import create_app
-from csrs.models import Role, User
+from csrs.models import Event, Role, User
 
 BACKEND = Path(__file__).resolve().parents[2]
 PASSWORD = "Correct horse battery staple 2026!"
@@ -139,5 +140,43 @@ def user_factory(clean_engine, password_hash):
             db.add(user)
             db.flush()
         return user
+
+    return create
+
+
+@pytest.fixture
+def login_headers():
+    def login(client, email):
+        csrf = client.get("/api/v1/auth/csrf").json()["csrf_token"]
+        reply = client.post(
+            "/api/v1/auth/login",
+            headers={"Origin": "http://localhost:5173", "X-CSRF-Token": csrf},
+            json={"email": email, "password": PASSWORD},
+        )
+        assert reply.status_code == 200
+        return {"Origin": "http://localhost:5173", "X-CSRF-Token": reply.json()["csrf_token"]}
+
+    return login
+
+
+@pytest.fixture
+def event_factory(clean_engine):
+    def create(owner, **changes):
+        with Session(clean_engine, expire_on_commit=False) as db, db.begin():
+            now = db.scalar(select(func.clock_timestamp()))
+            values = {
+                "organizer_id": owner.id,
+                "title": "PostgreSQL workshop",
+                "description": "Learn transactions",
+                "location": "Room 101",
+                "starts_at": now + timedelta(days=2),
+                "ends_at": now + timedelta(days=2, hours=2),
+                "booking_closes_at": now + timedelta(days=1),
+                "capacity": 10,
+            }
+            event = Event(**(values | changes))
+            db.add(event)
+            db.flush()
+        return event
 
     return create

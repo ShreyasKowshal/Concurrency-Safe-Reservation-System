@@ -10,11 +10,13 @@ from sqlalchemy.exc import OperationalError
 from sqlalchemy.exc import TimeoutError as DatabaseTimeoutError
 
 from csrs.api.auth import router as auth_router
+from csrs.api.events import organizer_router, public_router
 from csrs.api.health import router as health_router
 from csrs.api.openapi import install_auth_schema
 from csrs.auth.errors import AuthError
 from csrs.config import Settings
 from csrs.database import create_database_engine
+from csrs.events.errors import EventError
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -31,21 +33,24 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app = FastAPI(
         title=configuration.app_name,
-        version="0.2.0",
-        description="CSRS health and session authentication. Booking routes are not implemented.",
+        version="0.3.0",
+        description="CSRS health, authentication, and event management. Booking is not implemented",
         lifespan=lifespan,
     )
     app.state.settings = configuration
 
     @app.middleware("http")
-    async def prevent_auth_caching(request: Request, call_next):
+    async def prevent_sensitive_caching(request: Request, call_next):
         response = await call_next(request)
-        if request.url.path.startswith("/api/v1/auth/"):
+        if request.url.path.startswith(
+            ("/api/v1/auth/", "/api/v1/organizer/events", "/api/v1/events")
+        ):
             response.headers["Cache-Control"] = "no-store"
         return response
 
     @app.exception_handler(AuthError)
-    async def auth_error(request: Request, error: AuthError) -> JSONResponse:
+    @app.exception_handler(EventError)
+    async def controlled_error(request: Request, error: AuthError | EventError) -> JSONResponse:
         return JSONResponse(
             status_code=error.status,
             content={"error": {"code": error.code, "message": error.message}},
@@ -78,5 +83,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.add_exception_handler(DatabaseTimeoutError, unavailable)
     app.include_router(health_router, prefix="/api/v1")
     app.include_router(auth_router, prefix="/api/v1")
+    app.include_router(public_router, prefix="/api/v1")
+    app.include_router(organizer_router, prefix="/api/v1")
     install_auth_schema(app, configuration)
     return app

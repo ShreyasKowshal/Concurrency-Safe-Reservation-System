@@ -3,11 +3,13 @@
 A full-stack event/workshop reservation project focused on PostgreSQL transactions,
 concurrent capacity allocation, idempotency, and failure recovery.
 
-**Current implementation: Phase 2, pending review.** The API provides health checks,
-registration/login/logout/current user, database-backed sessions, CSRF protection, and role
-guards. Five PostgreSQL tables are managed by Alembic. The React app remains a health screen;
-there is no authentication UI yet. Event management, booking operations, Redis limiting/caching,
-and the expiration worker remain future phases. No cloud infrastructure is provisioned.
+**Current implementation: Phase 3, pending review.** The API provides health checks,
+session authentication/CSRF, public event discovery, and owner-only event creation, editing,
+capacity changes, publication, and closing. Five PostgreSQL tables are managed by Alembic;
+Phase 3 requires no new migration. React remains a health screen; authentication/event forms,
+booking operations, Redis limiting/caching, and the worker remain future work. No cloud
+infrastructure is provisioned. See the [Phase 3 evidence](docs/phase-3-validation.md) and
+[beginner explanation](docs/phase-explanations/phase-3-explanation.md).
 
 ## Repository structure
 
@@ -15,7 +17,7 @@ and the expiration worker remain future phases. No cloud infrastructure is provi
 csrs/
   .github/                 # GitHub Actions and dependency update configuration
   backend/
-    src/csrs/              # App, settings, models, auth services/guards, CLI, health/auth routes
+    src/csrs/              # App, models, auth/event services, CLI, health/auth/event routes
     migrations/            # Alembic runner and 0001_foundation revision
     scripts/               # Explicit health/full API contract exporter
     tests/unit/            # Configuration, crypto, health, and contract checks
@@ -168,7 +170,7 @@ framework yet. The health screen has no business actions or authentication place
 - [Implemented relational foundation and constraints](docs/database.md)
 - [Transactions, capacity invariant, states, expiration, and retries](docs/concurrency.md)
 - [Anonymous and authenticated CSRF/session design](docs/security.md)
-- [Implemented health/auth and planned domain API](docs/contracts/api.md)
+- [Implemented health/auth/events and planned reservation API](docs/contracts/api.md)
 - [Decision records](docs/decisions.md)
 - [Phase gates and future concurrency evidence](docs/phases.md)
 - [Completed Phase 1 validation](docs/phase-1-validation.md)
@@ -217,12 +219,12 @@ uses `httpx2`; it is a development dependency, not an application HTTP integrati
 GitHub Actions defines backend lint/format/unit/contract checks, required real PostgreSQL
 integration tests, a frontend build, Docker image builds, and a Compose health/proxy smoke check.
 The workflow also applies/checks development migrations and exercises migrations in isolated
-PostgreSQL tests. Phase 1 hosted CI passed; Phase 2 hosted CI cannot run until the reviewed
-changes are committed/pushed. No deployment secret is required for these checks.
+PostgreSQL tests. Phase 3 checks run locally before review; hosted CI for Phase 3 requires a
+later authorized commit/push. No deployment secret is required for these checks.
 
 `.env`, local environments, package caches, build output, and common key files are ignored.
 `.env.example` contains public local examples only. No production credentials are required.
 Do not log settings dumps with revealed secret values or commit database backups.
 
-Phase 2 does not establish reservation correctness or performance metrics. Those claims
+Phase 3 does not establish reservation correctness or performance metrics. Those claims
 require the later transaction implementation and reproducible PostgreSQL race/failure tests.

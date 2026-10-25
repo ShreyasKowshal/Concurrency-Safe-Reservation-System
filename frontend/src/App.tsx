@@ -36,7 +36,7 @@ export function App() {
 
   return (
     <main>
-      <p className="eyebrow">CSRS / Phase 2</p>
+      <p className="eyebrow">CSRS / Phase 3</p>
       <h1>Concurrency-Safe Reservation System</h1>
       <p className="intro">
         Project foundation for reliable event reservations, with PostgreSQL as the source of truth.
@@ -51,7 +51,7 @@ export function App() {
         </button>
       </section>
       <p className="scope">
-        The backend includes session authentication and the database schema. This screen checks
+        The backend includes session authentication and organizer event management. This screen checks
         environment health; event management and booking screens are planned for later phases.
       </p>
       <a href="http://localhost:8000/docs" target="_blank" rel="noreferrer">

@@ -1,8 +1,8 @@
 openapi: 3.1.0
 info:
   title: CSRS
-  description: CSRS health and session authentication. Booking routes are not implemented.
-  version: 0.2.0
+  description: CSRS health, authentication, and event management. Booking is not implemented
+  version: 0.3.0
 paths:
   /api/v1/health/live:
     get:

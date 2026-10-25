@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "csrs-backend"
-version = "0.2.0"
-description = "Concurrency-safe reservation system: schema and session authentication"
+version = "0.3.0"
+description = "Concurrency-safe reservation system: authentication and organizer event management"
 requires-python = ">=3.12,<3.13"
 dependencies = [
   "fastapi>=0.162,<0.163",

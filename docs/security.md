@@ -1,8 +1,9 @@
 # Authentication and CSRF contract
 
 **Implemented in Phase 2:** registration, login, logout, current user, session bootstrap,
-CSRF/origin validation, role guards, and local organizer provisioning. Event/reservation
-mutations remain future contracts. The React page is still a health screen, not an auth UI.
+CSRF/origin validation, role guards, and local organizer provisioning. Phase 3 applies these
+protections to event mutations and owner-only reads. Reservation mutations remain future
+contracts. The React page is still a health screen, not an auth or event-management UI.
 
 ## Sessions and roles
 
@@ -114,8 +115,9 @@ or revoked security sessions, skipping rows locked by other transactions. Repeat
 Rate limiting and automatic maintenance scheduling remain deferred; run bounded session
 cleanup manually in this phase. No email verification, password recovery, MFA, or auth UI
 is implemented. Cookie/CSRF protection does not substitute for those later product controls.
-Future mutation handlers must combine the HTTP origin/JSON guard with session/CSRF validation
-inside their service transaction; a read-only role dependency alone does not authorize a write.
+Phase 3 event mutation handlers combine the HTTP origin/JSON guard with session/CSRF validation
+inside their service transaction and recheck after an event lock wait. Future reservation
+handlers must do the same; a read-only role dependency alone does not authorize a write.
 Ownership guards must receive the owner ID read from the stored resource, never a claimed body ID.
 
 ## Phase 2 security acceptance tests

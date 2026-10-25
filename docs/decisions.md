@@ -20,6 +20,9 @@
 | ADR-016 | String states with named CHECKs | Avoid PostgreSQL enum lifecycle complexity; retain explicit database validation |
 | ADR-017 | ASCII canonical email and 15-128 character registration passwords | Deterministic unique emails and bounded Argon2 work; SMTPUTF8 local parts deferred |
 | ADR-018 | Disposable database per integration run | Exercise real commits/migrations without truncating the configured or development database |
+| ADR-019 | Owner-only event detail and scoped keyset pagination | Read drafts without changing public visibility or implementing a booking dashboard early; cursors never confer permission |
+| ADR-020 | Drafts can become stale; publication requires future database time | Allow draft repair, then recheck under the event lock; published start/deadline stay immutable and closed events are read-only |
+| ADR-021 | Phase 3 capacity uses stored allocation conservatively | Preserve bounds without implementing Phase 4 expiration; later shared cleanup must run under the same event lock |
 
 Scope gates and acceptance criteria are in [phases](phases.md). Decisions are reviewed when
 requirements change, not silently bypassed by a new endpoint or worker.

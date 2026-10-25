@@ -28,21 +28,23 @@ def install_auth_schema(app: FastAPI, settings: Settings) -> None:
             },
         }
         for path, operations in document["paths"].items():
-            if not path.startswith("/api/v1/auth/"):
+            if not path.startswith(("/api/v1/auth/", "/api/v1/organizer/events")):
                 continue
             for method, operation in operations.items():
-                if method == "post":
+                if method in {"post", "patch", "put", "delete"}:
                     operation["security"] = [{"SessionCookie": [], "CsrfToken": []}]
-                    operation["parameters"] = [
-                        {
-                            "name": "Origin",
-                            "in": "header",
-                            "required": False,
-                            "description": "Trusted Origin, or Referer fallback, is required.",
-                            "schema": {"type": "string"},
-                        }
-                    ]
-                elif path.endswith("/me"):
+                    operation.setdefault("parameters", []).extend(
+                        [
+                            {
+                                "name": "Origin",
+                                "in": "header",
+                                "required": False,
+                                "description": "Trusted Origin, or Referer fallback, is required.",
+                                "schema": {"type": "string"},
+                            }
+                        ]
+                    )
+                elif path.endswith("/me") or path.startswith("/api/v1/organizer/events"):
                     operation["security"] = [{"SessionCookie": []}]
         app.openapi_schema = document
         return document

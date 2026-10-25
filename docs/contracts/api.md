@@ -13,11 +13,12 @@ These health endpoints remain unchanged. Machine-readable specification:
 Both send `Cache-Control: no-store`. Readiness checks connectivity and a trivial SQL query,
 not migrations/schema, Redis, or future worker availability. No authentication is required.
 
-## Phase 2 authentication and planned domain API
+## Implemented authentication/events and planned reservation API
 
-The five `/auth/*` routes below are implemented in Phase 2. All event, organizer, and
-reservation HTTP routes remain unregistered. The full implemented specification, including
-cookie/CSRF security schemes, is [api.openapi.yaml](api.openapi.yaml).
+The five `/auth/*` routes below are implemented in Phase 2. Phase 3 adds public event list/detail
+and organizer create/list/detail/edit/capacity/publish/close. Availability, dashboards, and all
+reservation routes remain planned and unregistered. The full implemented specification,
+including cookie/CSRF security schemes, is [api.openapi.yaml](api.openapi.yaml).
 
 Base path `/api/v1`. JSON requests/responses, UUID resource IDs, RFC 3339 UTC timestamps.
 Unknown/extra mutation fields will be rejected. No client-supplied role, reservation state,
@@ -43,6 +44,7 @@ are never returned in response bodies. `GET /auth/me` requires authentication.
 | POST /organizer/events/{event_id}/close | empty object | 200: closed event | Owning organizer |
 | PATCH /organizer/events/{event_id}/capacity | capacity | 200: event | Owning organizer; event lock |
 | GET /organizer/events | limit, cursor | 200: own event summaries + next_cursor | Organizer |
+| GET /organizer/events/{event_id} | none | 200: own event detail, including draft/closed | Owning organizer; Phase 3 addition |
 | GET /organizer/events/{event_id}/dashboard | limit, cursor | 200: counts + paginated reservation rows | Owning organizer |
 | POST /events/{event_id}/holds | empty object | 201: reservation | Authenticated + idempotency key |
 | POST /reservations/{reservation_id}/confirm | empty object | 200: reservation | Owner + idempotency key |
@@ -51,9 +53,11 @@ are never returned in response bodies. `GET /auth/me` requires authentication.
 | GET /me/reservations | limit, cursor | 200: reservation rows + next_cursor | Authenticated |
 
 Pagination: default 20, maximum 100, opaque cursor with stable ordering and ID tie-breaker.
+Phase 3 pages use `items` and `next_cursor` (null on the last page).
 Event summaries contain id/title/location/starts_at/booking_closes_at/status/capacity;
 details additionally contain description/ends_at/organizer_id. Organizer responses may include
-allocated_seats; public availability is computed in one consistent query from valid holds and
+allocated_seats; Phase 3 includes that field only on organizer responses. Planned public
+availability is computed in one consistent query from valid holds and
 confirmed rows. Availability is no guarantee that a later hold succeeds and is not cached.
 
 A reservation response contains id, event_id, effective status, created_at, hold_expires_at,
@@ -79,6 +83,11 @@ resources (including another user's private resource). Reject unsupported media 
 | 409 | INVALID_RESERVATION_STATE | Terminal row cannot confirm |
 | 409 | CANCELLATION_CLOSED | Event has started |
 | 409 | CAPACITY_BELOW_ALLOCATED | Requested capacity violates current allocations |
+| 409 | INVALID_EVENT_STATE | Publication/closing/editing is not allowed in the current state |
+| 409 | EVENT_SCHEDULE_IMMUTABLE | A published event's start/deadline was supplied for editing |
+| 409 | EVENT_NOT_PUBLISHABLE | Publication requires future start and booking deadline |
+| 422 | INVALID_EVENT_SCHEDULE | Combined partial update violates schedule relationships |
+| 422 | INVALID_CURSOR | Cursor is malformed or belongs to another listing scope |
 | 409 | IDEMPOTENCY_KEY_REUSED | Same key with a different fingerprint |
 | 403 | CSRF_FAILED | Missing/invalid token, pre-session, or trusted origin |
 | 429 | RATE_LIMITED | Quota exceeded; include Retry-After |
@@ -96,9 +105,65 @@ Clients retain a key across network retries and fetch the current resource after
 A new intentional attempt, including retrying after a stored EVENT_FULL, uses a new key.
 Authenticated/idempotent responses use no-store. Auth/CSRF validation still precedes replay.
 
-State/locking rules are normative in [concurrency.md](../concurrency.md). Future event and
-reservation DTOs and OpenAPI schemas will be implemented with each phase; those routes
-do not currently exist. Authentication is implemented as described below.
+State/locking rules are normative in [concurrency.md](../concurrency.md). Event DTOs and OpenAPI
+schemas are implemented in Phase 3. Reservation/availability/dashboard DTOs and routes remain
+future work. Authentication is implemented as described below.
+
+## Phase 3 event rules and clarified contract details
+
+The earlier contract listed organizer collection retrieval but no private single-event detail
+route. Phase 3 adds `GET /organizer/events/{event_id}` so an owner can read a draft without
+making public detail conditional on cookies or implementing the reservation dashboard early.
+Public detail always uses the same PUBLISHED-only visibility rule, even for a logged-in owner.
+
+| Operation | Allowed state | Rules |
+| --- | --- | --- |
+| Create | New row | Server sets DRAFT, authenticated organizer owner, allocated_seats=0 |
+| Metadata PATCH | DRAFT | title/description/location/starts_at/ends_at/booking_closes_at |
+| Metadata PATCH | PUBLISHED | title/description/location/ends_at only; supplying start/deadline, even unchanged, is 409 |
+| Capacity PATCH | DRAFT or PUBLISHED | Separate endpoint; integer >=1 and >= stored allocated_seats |
+| Publish | DRAFT only | Change to PUBLISHED; start and booking deadline strictly after post-lock PostgreSQL clock |
+| Close | PUBLISHED only | Change to CLOSED; no allocations or reservation rows changed |
+| Edit/publish/close | CLOSED | Reject; no reopening, hard deletion, or event cancellation |
+
+Repeated publish/close is an invalid transition (409), not an idempotent replay. Event commands
+do not implement reservation idempotency and do not require an Idempotency-Key.
+
+Creation requires title, location, all three timestamps, and capacity. Description defaults
+to an empty string. Title/location are trimmed and nonempty, at most 200/300 characters;
+description is at most 10,000 characters and can be cleared with an empty string.
+Capacity must be a JSON integer from 1 to 2,147,483,647 (PostgreSQL INTEGER range); booleans,
+numeric strings, and fractional values are rejected. Unknown fields are rejected, including
+owner, status, IDs, and the allocation counter. Capacity is not accepted by metadata PATCH.
+PATCH requires at least one field and rejects explicit nulls. Publish/close require `{}`.
+
+Timestamps must be RFC 3339 strings with an explicit timezone and are normalized to UTC.
+Epoch numbers/strings and naive dates are rejected. The merged schedule always satisfies
+`booking_closes_at <= starts_at < ends_at`. Drafts may store past but structurally valid
+schedules, enabling an organizer to repair a stale draft; publication rechecks future dates
+using the database clock. Public discovery filters by PUBLISHED status, not booking eligibility:
+full events and events whose booking deadline/start has passed remain visible until closed.
+No automatic closing or promise of available seats is implied.
+
+Public and organizer lists order by `(starts_at, id)` ascending and use a bounded base64url
+JSON keyset cursor: version, listing scope, last start time, and ID. Default limit=20, max=100;
+cursor max length=512. Organizer cursors are scoped to that user. Cursors are navigation data,
+not secrets or access tokens; changing a cursor never bypasses the SQL visibility/owner filter.
+Separate pages are not a frozen database snapshot: draft schedule edits or publication changes
+between requests can change membership/order. A refresh restarts the listing.
+
+Every existing-event mutation locks its owned event with `SELECT ... FOR UPDATE`, then
+rechecks session expiry/revocation, current active user/role, ownership, and state. All successful
+writes commit before responding. Read endpoints reuse the current-user/organizer dependencies.
+All event responses currently use no-store, including public responses; Redis is not involved.
+Validation errors omit submitted values. Event 422 responses can be sanitized `detail` errors
+or the controlled INVALID_EVENT_SCHEDULE/INVALID_CURSOR envelope; OpenAPI describes both.
+
+**Phase 4 integration requirement:** Phase 3 capacity changes compare against the stored
+counter, including overdue persisted HELD rows, and never expire reservations. Reductions may
+therefore be conservatively refused. Phase 4 must add the shared due-hold cleanup under the
+same event lock before capacity admission/edits, without changing lock order or introducing
+an independent commit. Closing must continue to leave existing holds/confirmed rows intact.
 
 ## Authentication details
 
