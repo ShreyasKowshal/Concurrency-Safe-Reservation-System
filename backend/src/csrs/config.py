@@ -26,13 +26,23 @@ class Settings(BaseSettings):
     db_statement_timeout_ms: int = Field(default=3000, ge=100, le=30000)
     db_pool_size: int = Field(default=5, ge=1, le=20)
     db_max_overflow: int = Field(default=5, ge=0, le=20)
+    anonymous_session_ttl_seconds: int = Field(default=900, ge=60, le=3600)
+    session_ttl_seconds: int = Field(default=28800, ge=300, le=604800)
+
+    @property
+    def secure_cookies(self) -> bool:
+        return urlsplit(self.public_origin).scheme == "https"
+
+    @property
+    def session_cookie_name(self) -> str:
+        return "__Host-csrs_session" if self.secure_cookies else "csrs_session"
 
     @field_validator("database_url")
     @classmethod
     def validate_database_url(cls, value: SecretStr) -> SecretStr:
         try:
             url = make_url(value.get_secret_value())
-        except ArgumentError:
+        except (ArgumentError, ValueError):
             raise ValueError("database_url must be a valid PostgreSQL URL") from None
         if url.drivername != "postgresql+psycopg" or not url.host or not url.database:
             raise ValueError("database_url requires postgresql+psycopg, a host, and a database")
@@ -56,11 +66,14 @@ class Settings(BaseSettings):
         try:
             url = urlsplit(value)
             valid = (
-                url.scheme in {"http", "https"}
+                not any(character.isspace() for character in value)
+                and "?" not in value
+                and "#" not in value
+                and url.scheme in {"http", "https"}
                 and url.hostname
                 and url.port != 0
-                and not url.username
-                and not url.password
+                and url.username is None
+                and url.password is None
                 and not url.path
                 and not url.query
                 and not url.fragment
@@ -75,6 +88,6 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def require_https_in_production(self) -> "Settings":
-        if self.environment == "production" and not self.public_origin.startswith("https://"):
+        if self.environment == "production" and not self.secure_cookies:
             raise ValueError("production public_origin requires HTTPS")
         return self

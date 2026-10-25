@@ -1,8 +1,8 @@
 # Authentication and CSRF contract
 
-**Design only: Phase 1 exposes no authentication or state-changing business endpoints.**
-These requirements must be implemented and tested with authentication in Phase 2.
-An absent CSRF middleware in Phase 1 must not be mistaken for implemented protection.
+**Implemented in Phase 2:** registration, login, logout, current user, session bootstrap,
+CSRF/origin validation, role guards, and local organizer provisioning. Event/reservation
+mutations remain future contracts. The React page is still a health screen, not an auth UI.
 
 ## Sessions and roles
 
@@ -72,6 +72,51 @@ Trust proxy headers only from explicitly configured infrastructure in a later de
 SameSite and JSON/custom headers provide defense in depth. They do not replace synchronizer
 token and origin validation. XSS can bypass CSRF defenses; avoid unsafe HTML rendering and
 add appropriate deployment headers later. Tokens must never enter URLs, logs, or cached responses.
+
+## Implemented policy and transaction details
+
+Registration accepts passwords of 15-128 characters; login accepts 1-128 so invalid credentials
+are verified without applying registration policy to existing accounts. Passwords are never
+trimmed or truncated. Argon2id uses 19,456 KiB memory, two iterations, one lane, a 16-byte random
+salt, and a 32-byte hash. Successful login upgrades older Argon2 parameters when necessary.
+Email addresses are validated without DNS lookup, stripped at the edges, converted to ASCII
+(IDN domains become punycode), and lowercased. SMTPUTF8 local parts are intentionally unsupported.
+
+Cookie secrets and independent CSRF values each contain 256 random bits. Database token
+lookups use SHA-256 cookie digests. Synchronizer tokens are stored server-side as designed;
+they are not independent authentication credentials. Authenticated sessions expire after
+8 hours by default; pre-sessions after 15 minutes. Both are absolute database-clock deadlines.
+Fetching CSRF again neither rotates the token nor extends database/cookie expiry.
+
+Services own explicit transactions and commit before routes return Set-Cookie/success.
+Registration/login first validate the anonymous session, release the read transaction, and
+perform expensive password hashing/verification without holding a database transaction.
+They then lock and revalidate the pre-session (including database-clock expiry and CSRF)
+before atomically changing account/session state. A consumed pre-session cannot be reused
+by a competing request. Login also locks/rereads the user and checks active status and that
+the verified password hash has not changed. Rotation deletes the old anonymous session;
+logout sets revoked_at. Later reads always check the current user active flag.
+
+Unknown email, wrong password, and inactive account use the same 401 INVALID_CREDENTIALS
+response. Unknown accounts perform a real Argon2 verification against a process-local dummy.
+This mitigates obvious timing differences; it is not a claim of constant end-to-end latency.
+Duplicate registration returns generic 409 REGISTRATION_UNAVAILABLE; the status can reveal
+that an address cannot be registered. Request validation responses retain 422 detail/type/loc/msg
+but remove input/ctx so passwords, CSRF values, and complete request bodies are not echoed.
+All auth responses, including errors, are no-store. Duplicate/untrusted Origin headers are rejected.
+
+Local administrators can run `python -m csrs.cli promote-organizer EMAIL` for an existing
+active user. It revokes that user's existing sessions; the user logs in again. This command
+requires database access and is never exposed as an HTTP role-selection endpoint.
+`python -m csrs.cli purge-sessions --batch-size 1000` deletes one bounded batch of expired
+or revoked security sessions, skipping rows locked by other transactions. Repeat as needed.
+
+Rate limiting and automatic maintenance scheduling remain deferred; run bounded session
+cleanup manually in this phase. No email verification, password recovery, MFA, or auth UI
+is implemented. Cookie/CSRF protection does not substitute for those later product controls.
+Future mutation handlers must combine the HTTP origin/JSON guard with session/CSRF validation
+inside their service transaction; a read-only role dependency alone does not authorize a write.
+Ownership guards must receive the owner ID read from the stored resource, never a claimed body ID.
 
 ## Phase 2 security acceptance tests
 

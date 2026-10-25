@@ -3,10 +3,11 @@
 A full-stack event/workshop reservation project focused on PostgreSQL transactions,
 concurrent capacity allocation, idempotency, and failure recovery.
 
-**Current implementation: Phase 1 only.** The API provides liveness/readiness checks and the
-React app shows development-environment health. Authentication, CSRF enforcement, events,
-reservations, Redis limiting/caching, and the expiration worker are not implemented yet.
-Their contracts are documented for phased review. No cloud infrastructure is provisioned.
+**Current implementation: Phase 2, pending review.** The API provides health checks,
+registration/login/logout/current user, database-backed sessions, CSRF protection, and role
+guards. Five PostgreSQL tables are managed by Alembic. The React app remains a health screen;
+there is no authentication UI yet. Event management, booking operations, Redis limiting/caching,
+and the expiration worker remain future phases. No cloud infrastructure is provisioned.
 
 ## Repository structure
 
@@ -14,11 +15,11 @@ Their contracts are documented for phased review. No cloud infrastructure is pro
 csrs/
   .github/                 # GitHub Actions and dependency update configuration
   backend/
-    src/csrs/              # FastAPI application, settings, database engine, health routes
-    migrations/            # Alembic runner/templates; no schema revisions yet
-    scripts/               # Explicit health-contract exporter
-    tests/unit/            # Configuration, health, and contract checks
-    tests/integration/     # Real PostgreSQL health/isolation checks
+    src/csrs/              # App, settings, models, auth services/guards, CLI, health/auth routes
+    migrations/            # Alembic runner and 0001_foundation revision
+    scripts/               # Explicit health/full API contract exporter
+    tests/unit/            # Configuration, crypto, health, and contract checks
+    tests/integration/     # Real PostgreSQL auth, schema, migration, and race checks
     pyproject.toml         # Direct dependency constraints and test/lint configuration
     requirements-dev.lock  # Resolved transitive development constraints
     Dockerfile
@@ -36,6 +37,7 @@ csrs/
     decisions.md
     phases.md
     phase-1-validation.md
+    phase-2-validation.md
   infra/README.md
   compose.yaml
   .env.example
@@ -53,6 +55,8 @@ From the repository root, copy the example once (PowerShell):
 Copy-Item .env.example .env
 docker compose config --quiet
 docker compose up --build -d --wait --wait-timeout 120
+docker compose exec -T backend python -m alembic upgrade head
+docker compose exec -T backend python -m alembic check
 docker compose logs -f backend frontend
 ```
 
@@ -73,7 +77,9 @@ Rebuild the backend image after Python dependency changes.
 
 The browser uses Vite's same-origin `/api` proxy. Use `localhost:5173` consistently with
 `CSRS_PUBLIC_ORIGIN`; do not switch to a different host alias when testing later CSRF behavior.
-Redis runs locally but is intentionally not queried by the Phase 1 application.
+Redis runs locally but is intentionally not queried by the Phase 2 application. Apply the
+migration before using authentication. Readiness still checks connectivity, not schema currency.
+Migrations are explicit administrative steps, never automatic per-API-process startup work.
 
 Stop services while preserving PostgreSQL data:
 
@@ -91,8 +97,11 @@ docker compose --profile test run --build --rm backend-test
 docker compose --profile test stop postgres-test
 ```
 
-The runner executes all Pytest tests. Its database is `csrs_test` on the separate
-`postgres-test` service with disposable storage. It never points at the application database.
+The runner executes all Pytest tests. `csrs_test` on the separate `postgres-test` service is
+the connection target used to create generated `csrs_phase2_<uuid>_test` databases. Tests apply
+real migrations and commit transactions there, then remove only those generated databases.
+The test role needs CREATEDB permission (the local/CI test role has it). The configured input
+database is not truncated/dropped, and tests never point at the development application database.
 No SQLite integration fallback exists. A configured but unreachable PostgreSQL server fails
 the integration tests; only an absent test URL produces an explicit local skip.
 
@@ -103,6 +112,7 @@ choices. PostgreSQL and Redis can still be started through Compose:
 
 ```powershell
 docker compose up -d --wait postgres redis
+docker compose run --build --rm backend python -m alembic upgrade head
 python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -c backend/requirements-dev.lock -e './backend[dev]'
 .\.venv\Scripts\python.exe -m uvicorn csrs.main:create_app --factory --app-dir backend/src --env-file .env --reload --reload-dir backend/src
@@ -139,7 +149,9 @@ $env:CSRS_TEST_DATABASE_URL = 'postgresql+psycopg://csrs_test:csrs_test_local_on
 
 On POSIX set the URL with `export CSRS_TEST_DATABASE_URL='...'`. The test database name must
 end in `_test`. Treat that guard as an additional check, not permission to point at shared data.
-The current integration tests are read-only; later phases will create disposable schema/data.
+Integration tests create disposable databases/schema/data on the test server. On Windows,
+prefer containerized tests if host PostgreSQL port forwarding is unavailable; do not point
+tests at the application database as a workaround.
 
 Frontend verification:
 
@@ -153,23 +165,47 @@ framework yet. The health screen has no business actions or authentication place
 ## Contracts and implementation decisions
 
 - [Architecture and component responsibilities](docs/architecture.md)
-- [Planned relational schema and constraints](docs/database.md)
+- [Implemented relational foundation and constraints](docs/database.md)
 - [Transactions, capacity invariant, states, expiration, and retries](docs/concurrency.md)
 - [Anonymous and authenticated CSRF/session design](docs/security.md)
-- [Implemented health and planned domain API](docs/contracts/api.md)
+- [Implemented health/auth and planned domain API](docs/contracts/api.md)
 - [Decision records](docs/decisions.md)
 - [Phase gates and future concurrency evidence](docs/phases.md)
-- [Actual Phase 1 validation and outstanding blockers](docs/phase-1-validation.md)
+- [Completed Phase 1 validation](docs/phase-1-validation.md)
+- [Phase 2 verification and limitations](docs/phase-2-validation.md)
 
-To intentionally refresh the health OpenAPI after reviewing endpoint changes:
+To intentionally refresh the health and complete implemented OpenAPI after reviewing changes:
 
 ```powershell
 .\.venv\Scripts\python.exe backend/scripts/export_health_contract.py
 ```
 
-A test detects differences between the checked-in health contract and the runtime schema.
-Alembic currently has no domain metadata/revisions; `heads` should print nothing. Do not run
-autogeneration or create business tables until Phase 2 has been reviewed.
+Tests detect differences between the checked-in specifications and runtime schema.
+Alembic `heads` should show `0001_foundation`; `current` and `check` verify the target database
+has been migrated and matches model metadata. Downgrade is destructive and is exercised only
+on disposable test databases. Never downgrade development data to test a migration.
+
+## Authentication and local administration
+
+Use a cookie-aware client against `/api/v1/auth/csrf` before registering/logging in. Send its
+csrf_token as `X-CSRF-Token`, preserve the cookie, and send `Origin: http://localhost:5173`
+on JSON mutations. Registration returns a new anonymous token and does not log in; login
+returns a new authenticated token. Use the newly returned token after every rotation.
+`GET /api/v1/auth/me` returns id/email/role; logout uses `POST /api/v1/auth/logout` with `{}`.
+Passwords and session cookies never appear in response JSON. No public role selection exists.
+
+Provision an organizer from an existing registered attendee through the local admin CLI:
+
+```powershell
+docker compose exec -T backend python -m csrs.cli promote-organizer attendee@example.com
+docker compose exec -T backend python -m csrs.cli purge-sessions --batch-size 1000
+```
+
+Promotion revokes existing sessions; log in again. Cleanup deletes one bounded batch of
+expired/revoked security sessions; repeat as needed. Host CLI commands support `--env-file .env`
+before the subcommand. CLI access is administrative database access, not a public API.
+Redis rate limiting and automatic cleanup scheduling are deferred; see the security limitations
+in [Phase 2 verification](docs/phase-2-validation.md).
 
 Python direct requirements are bounded in `pyproject.toml`; `requirements-dev.lock` constrains
 resolved development versions. Frontend dependencies use `npm ci` and the committed lockfile.
@@ -180,12 +216,13 @@ uses `httpx2`; it is a development dependency, not an application HTTP integrati
 
 GitHub Actions defines backend lint/format/unit/contract checks, required real PostgreSQL
 integration tests, a frontend build, Docker image builds, and a Compose health/proxy smoke check.
-The workflow is configured locally; a successful hosted GitHub run cannot be claimed before
-the repository is pushed. There is no remote or deployment secret configured by this phase.
+The workflow also applies/checks development migrations and exercises migrations in isolated
+PostgreSQL tests. Phase 1 hosted CI passed; Phase 2 hosted CI cannot run until the reviewed
+changes are committed/pushed. No deployment secret is required for these checks.
 
 `.env`, local environments, package caches, build output, and common key files are ignored.
 `.env.example` contains public local examples only. No production credentials are required.
 Do not log settings dumps with revealed secret values or commit database backups.
 
-Phase 1 does not establish reservation correctness or performance metrics. Those claims
+Phase 2 does not establish reservation correctness or performance metrics. Those claims
 require the later transaction implementation and reproducible PostgreSQL race/failure tests.

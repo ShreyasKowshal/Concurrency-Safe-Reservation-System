@@ -1,8 +1,8 @@
 openapi: 3.1.0
 info:
   title: CSRS
-  description: Phase 1 foundation. Only health endpoints are implemented.
-  version: 0.1.0
+  description: CSRS health and session authentication. Booking routes are not implemented.
+  version: 0.2.0
 paths:
   /api/v1/health/live:
     get:

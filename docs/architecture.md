@@ -2,10 +2,11 @@
 
 ## Implementation boundary
 
-Phase 1 implements configuration, application/engine lifecycle, operational health endpoints,
-a React health screen, development infrastructure, and foundational tests. Domain modules,
-schema revisions, authentication, CSRF enforcement, reservations, rate limiting, caching,
-and the expiration worker are **contracts for later phases**, not implemented features.
+Phase 1 provides configuration, application/engine lifecycle, health checks, React health UI,
+and development infrastructure. Phase 2 adds the five-table database foundation, one Alembic
+migration, backend authentication, CSRF enforcement, reusable authorization guards, and
+local administration commands. Events, booking operations, Redis limiting/caching, and the
+expiration worker remain **future contracts**, not implemented features.
 
 ## Modular monolith
 
@@ -50,9 +51,9 @@ There is no implicit `.env` search: Uvicorn's `--env-file .env` loads host devel
 Compose injects its explicit `env_file`. Tests construct settings or set isolated variables.
 `POSTGRES_*` variables configure the container, not the Python settings model.
 
-Only `CSRS_PUBLIC_ORIGIN` is a future browser trust boundary; do not derive trusted origins
-from arbitrary Host or forwarded headers. Phase 1 validates its shape but does not implement
-CSRF or authentication middleware. No CORS middleware is enabled. Frontend `VITE_*` variables
+`CSRS_PUBLIC_ORIGIN` is the browser trust boundary; do not derive trusted origins
+from arbitrary Host or forwarded headers. Phase 2 validates source origins and session-bound
+CSRF on auth mutations. No CORS middleware is enabled. Frontend `VITE_*` variables
 must never contain secrets; API requests use relative same-origin URLs.
 
 ## Development and future hosting

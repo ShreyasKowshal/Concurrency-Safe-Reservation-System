@@ -1,12 +1,12 @@
-"""Migration runner. No application tables or schema revisions exist in Phase 1."""
+"""Alembic runner. Tests can supply an isolated PostgreSQL connection explicitly."""
 
 from alembic import context
 
 from csrs.config import Settings
 from csrs.database import create_database_engine
+from csrs.models import Base
 
-# Phase 2 will provide model metadata for autogeneration.
-target_metadata = None
+target_metadata = Base.metadata
 
 
 def run_migrations_offline() -> None:
@@ -23,6 +23,17 @@ def run_migrations_offline() -> None:
 
 
 def run_migrations_online() -> None:
+    existing_connection = context.config.attributes.get("connection")
+    if existing_connection is not None:
+        context.configure(
+            connection=existing_connection,
+            target_metadata=target_metadata,
+            compare_type=True,
+            compare_server_default=True,
+        )
+        with context.begin_transaction():
+            context.run_migrations()
+        return
     engine = create_database_engine(Settings())
     try:
         with engine.connect() as connection:
@@ -30,6 +41,7 @@ def run_migrations_online() -> None:
                 connection=connection,
                 target_metadata=target_metadata,
                 compare_type=True,
+                compare_server_default=True,
             )
             with context.begin_transaction():
                 context.run_migrations()

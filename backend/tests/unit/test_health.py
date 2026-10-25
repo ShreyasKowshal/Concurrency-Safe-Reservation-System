@@ -51,4 +51,12 @@ def test_readiness_failure_is_safe_and_liveness_survives(
 
 def test_business_routes_are_not_implemented(settings: Settings) -> None:
     app = create_app(settings)
-    assert set(app.openapi()["paths"]) == {"/api/v1/health/live", "/api/v1/health/ready"}
+    assert set(app.openapi()["paths"]) == {
+        "/api/v1/health/live",
+        "/api/v1/health/ready",
+        "/api/v1/auth/csrf",
+        "/api/v1/auth/register",
+        "/api/v1/auth/login",
+        "/api/v1/auth/logout",
+        "/api/v1/auth/me",
+    }

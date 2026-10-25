@@ -6,7 +6,7 @@ so the same contract documentation is available to containerized tests. This dir
 infrastructure notes and, in Phase 8, reviewed deployment configuration.
 
 There is no cloud provisioning, paid service, deployment credential, expiration worker,
-Celery broker, or production deployment in Phase 1. Redis is started for later phases
+Celery broker, or production deployment in Phase 2. Redis is started for later phases
 but the application does not connect to it yet.
 
 PostgreSQL uses a named volume; normal `docker compose down` preserves it. Never use
@@ -23,3 +23,9 @@ empty data directory. Plan a migration or consciously recreate disposable develo
 
 Node dependency volume: the frontend entry command runs `npm ci` to synchronize the named
 `node_modules` volume with the lockfile. Backend dependency changes require an image rebuild.
+
+Apply Phase 2 migrations explicitly after startup with
+`docker compose exec -T backend python -m alembic upgrade head`; verify with `alembic check`.
+The API never migrates automatically. Integration tests create uniquely named disposable
+databases on postgres-test, migrate them, and remove only those databases after the run.
+The test role requires CREATEDB; no test truncation or downgrade targets development data.

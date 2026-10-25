@@ -1,0 +1,469 @@
+openapi: 3.1.0
+info:
+  title: CSRS
+  description: CSRS health and session authentication. Booking routes are not implemented.
+  version: 0.2.0
+paths:
+  /api/v1/health/live:
+    get:
+      tags:
+      - health
+      summary: Liveness
+      operationId: liveness_api_v1_health_live_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LivenessResponse'
+  /api/v1/health/ready:
+    get:
+      tags:
+      - health
+      summary: Readiness
+      operationId: readiness_api_v1_health_ready_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadinessResponse'
+        '503':
+          description: PostgreSQL unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadinessResponse'
+  /api/v1/auth/csrf:
+    get:
+      tags:
+      - authentication
+      summary: Csrf
+      operationId: csrf_api_v1_auth_csrf_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CsrfResponse'
+        '401':
+          description: Authentication failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: CSRF or authorization rejected
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: Database temporarily unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /api/v1/auth/register:
+    post:
+      tags:
+      - authentication
+      summary: Register
+      operationId: register_api_v1_auth_register_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+        required: true
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '401':
+          description: Authentication failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: CSRF or authorization rejected
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: Database temporarily unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '415':
+          description: Unsupported Media Type
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - SessionCookie: []
+        CsrfToken: []
+      parameters:
+      - name: Origin
+        in: header
+        required: false
+        description: Trusted Origin, or Referer fallback, is required.
+        schema:
+          type: string
+  /api/v1/auth/login:
+    post:
+      tags:
+      - authentication
+      summary: Login
+      operationId: login_api_v1_auth_login_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmailPassword'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '401':
+          description: Authentication failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: CSRF or authorization rejected
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: Database temporarily unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '415':
+          description: Unsupported Media Type
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - SessionCookie: []
+        CsrfToken: []
+      parameters:
+      - name: Origin
+        in: header
+        required: false
+        description: Trusted Origin, or Referer fallback, is required.
+        schema:
+          type: string
+  /api/v1/auth/logout:
+    post:
+      tags:
+      - authentication
+      summary: Logout
+      operationId: logout_api_v1_auth_logout_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmptyRequest'
+        required: true
+      responses:
+        '204':
+          description: Successful Response
+        '401':
+          description: Authentication failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: CSRF or authorization rejected
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: Database temporarily unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '415':
+          description: Unsupported Media Type
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - SessionCookie: []
+        CsrfToken: []
+      parameters:
+      - name: Origin
+        in: header
+        required: false
+        description: Trusted Origin, or Referer fallback, is required.
+        schema:
+          type: string
+  /api/v1/auth/me:
+    get:
+      tags:
+      - authentication
+      summary: Me
+      operationId: me_api_v1_auth_me_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '401':
+          description: Authentication failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: CSRF or authorization rejected
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: Database temporarily unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      security:
+      - SessionCookie: []
+components:
+  schemas:
+    AuthResponse:
+      properties:
+        csrf_token:
+          type: string
+          title: Csrf Token
+        user:
+          $ref: '#/components/schemas/UserResponse'
+      type: object
+      required:
+      - csrf_token
+      - user
+      title: AuthResponse
+    CsrfResponse:
+      properties:
+        csrf_token:
+          type: string
+          title: Csrf Token
+      type: object
+      required:
+      - csrf_token
+      title: CsrfResponse
+    EmailPassword:
+      properties:
+        email:
+          type: string
+          maxLength: 254
+          title: Email
+        password:
+          type: string
+          maxLength: 128
+          minLength: 1
+          format: password
+          title: Password
+          writeOnly: true
+      additionalProperties: false
+      type: object
+      required:
+      - email
+      - password
+      title: EmailPassword
+    EmptyRequest:
+      properties: {}
+      additionalProperties: false
+      type: object
+      title: EmptyRequest
+    ErrorDetail:
+      properties:
+        code:
+          type: string
+          title: Code
+        message:
+          type: string
+          title: Message
+      type: object
+      required:
+      - code
+      - message
+      title: ErrorDetail
+    ErrorResponse:
+      properties:
+        error:
+          $ref: '#/components/schemas/ErrorDetail'
+      type: object
+      required:
+      - error
+      title: ErrorResponse
+    HTTPValidationError:
+      properties:
+        detail:
+          items:
+            $ref: '#/components/schemas/ValidationError'
+          type: array
+          title: Detail
+      type: object
+      title: HTTPValidationError
+    LivenessResponse:
+      properties:
+        status:
+          type: string
+          const: alive
+          title: Status
+          default: alive
+      type: object
+      title: LivenessResponse
+    ReadinessResponse:
+      properties:
+        status:
+          type: string
+          enum:
+          - ready
+          - not_ready
+          title: Status
+        dependencies:
+          additionalProperties:
+            type: string
+            enum:
+            - up
+            - down
+          propertyNames:
+            const: postgresql
+          type: object
+          title: Dependencies
+      type: object
+      required:
+      - status
+      - dependencies
+      title: ReadinessResponse
+    RegisterRequest:
+      properties:
+        email:
+          type: string
+          maxLength: 254
+          title: Email
+        password:
+          type: string
+          maxLength: 128
+          minLength: 15
+          format: password
+          title: Password
+          writeOnly: true
+      additionalProperties: false
+      type: object
+      required:
+      - email
+      - password
+      title: RegisterRequest
+    Role:
+      type: string
+      enum:
+      - ATTENDEE
+      - ORGANIZER
+      title: Role
+    UserResponse:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        email:
+          type: string
+          title: Email
+        role:
+          $ref: '#/components/schemas/Role'
+      type: object
+      required:
+      - id
+      - email
+      - role
+      title: UserResponse
+    ValidationError:
+      properties:
+        loc:
+          items:
+            anyOf:
+            - type: string
+            - type: integer
+          type: array
+          title: Location
+        msg:
+          type: string
+          title: Message
+        type:
+          type: string
+          title: Error Type
+        input:
+          title: Input
+        ctx:
+          type: object
+          title: Context
+      type: object
+      required:
+      - loc
+      - msg
+      - type
+      title: ValidationError
+  securitySchemes:
+    SessionCookie:
+      type: apiKey
+      in: cookie
+      name: csrs_session
+      description: Opaque cookie; anonymous pre-session for register/login.
+    CsrfToken:
+      type: apiKey
+      in: header
+      name: X-CSRF-Token
+      description: Synchronizer token bound to the cookie session.

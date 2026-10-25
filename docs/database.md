@@ -1,7 +1,8 @@
-# Planned relational database
+# Relational database foundation
 
-**Design only in Phase 1.** There are no ORM domain models or schema revisions yet.
-Alembic has a configured runner and an empty versions directory. Do not use `create_all`.
+**Implemented in Phase 2:** five SQLAlchemy models and Alembic revision `0001_foundation`.
+Use `alembic upgrade head`; no runtime `create_all`, automatic startup migration, or database
+extension is needed. PostgreSQL's built-in `gen_random_uuid()` supplies server-side IDs.
 
 Use UUID primary keys, `timestamptz` for instants, UTC API timestamps, explicit foreign keys,
 and NOT NULL for required data. Normalize email with one documented case-insensitive policy;
@@ -35,7 +36,9 @@ alone cannot authenticate a user. Both values are redacted from logs. See [secur
 - Restrict hard deletion of referenced users/events; preserve reservation and idempotency history.
 
 Timestamp consistency needs CHECK constraints, while transition legality and immutability are
-initially enforced by the centralized service. Exact DDL is a Phase 2 review deliverable.
+enforced by the future centralized reservation service. The migration contains explicit,
+named CHECKs for state/timestamp combinations, strict confirmation-before-deadline and
+expiration-at-or-after-deadline boundaries. It does not implement reservation transitions.
 
 ## Counter invariant
 
@@ -52,7 +55,7 @@ equality. It is preserved by the locking protocol and independently checked in t
 
 No claim is made that arbitrary administrator writes or future code bypassing the protocol
 remain safe. All API and worker writes must use the same service. Stored procedures/triggers
-are optional later hardening, not Phase 1 scaffolding.
+are optional later hardening, not part of Phase 2.
 
 ## Index plan
 
@@ -68,5 +71,29 @@ are optional later hardening, not Phase 1 scaffolding.
 Retain idempotency records for the MVP. A retention/key-reuse contract is a separate future
 decision. Claim insertion and completed response occur in the same transaction; incomplete
 claims are not independently committed.
+
+## Implemented schema details and migrations
+
+String states with named CHECKs are used instead of PostgreSQL enum types, simplifying future
+state migrations. All foreign keys use RESTRICT. Session cookie digests and CSRF tokens are
+64 lowercase hexadecimal characters. Idempotency keys contain 1-128 visible ASCII characters;
+fingerprints are 64 lowercase hexadecimal characters. A pending idempotency row has all
+response fields NULL; a completed row requires a 200-499 status, object JSONB body, and
+completion timestamp. SQL NULL checks are explicit, so three-valued CHECK logic cannot admit
+a partially completed response. The future transaction protocol must prevent committing a
+pending claim separately; no idempotency command service exists yet.
+
+Created timestamps default to PostgreSQL transaction time. User/event/reservation updated_at
+defaults on insert and is updated by SQLAlchemy updates; no timestamp triggers are installed.
+Administrative SQL must explicitly maintain updated_at. Organizer-role eligibility and
+immutable reservation owner/event IDs are future service rules, not cross-table CHECKs.
+
+The initial upgrade only creates tables/indexes. Reapplying head is a no-op and is tested to
+preserve existing rows. Downgrade removes these tables and is tested only on generated
+disposable databases, never on the development database. Alembic metadata drift checks,
+constraint failures, defaults, partial uniqueness, and FK deletion restrictions are covered
+by real PostgreSQL tests. Test databases are generated with `csrs_phase2_<uuid>_test` names
+on the dedicated test server and removed after the run; the configured input database is
+not truncated or dropped.
 
 Reference: [PostgreSQL constraints](https://www.postgresql.org/docs/current/ddl-constraints.html).

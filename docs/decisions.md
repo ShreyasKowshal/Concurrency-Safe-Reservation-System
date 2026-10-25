@@ -16,6 +16,10 @@
 | ADR-012 | Standalone polling worker, no Celery initially | No broker/task delivery problem for one database sweep; revisit for independent notification jobs |
 | ADR-013 | Real PostgreSQL integration tests | SQLite cannot stand in for PostgreSQL locking; requires Docker or a dedicated server |
 | ADR-014 | No domain implementation in Phase 1 | Establish reviewable contracts before schema/auth/reservation work |
+| ADR-015 | Five-table foundation in Phase 2, no booking commands | Establish constraints and auth without prematurely implementing event/hold services |
+| ADR-016 | String states with named CHECKs | Avoid PostgreSQL enum lifecycle complexity; retain explicit database validation |
+| ADR-017 | ASCII canonical email and 15-128 character registration passwords | Deterministic unique emails and bounded Argon2 work; SMTPUTF8 local parts deferred |
+| ADR-018 | Disposable database per integration run | Exercise real commits/migrations without truncating the configured or development database |
 
 Scope gates and acceptance criteria are in [phases](phases.md). Decisions are reviewed when
 requirements change, not silently bypassed by a new endpoint or worker.

@@ -2,7 +2,7 @@
 
 ## Implemented in Phase 1
 
-The only application endpoints are these probes. Machine-readable specification:
+These health endpoints remain unchanged. Machine-readable specification:
 [health.openapi.yaml](health.openapi.yaml). `/docs` and `/openapi.json` are FastAPI tooling.
 
 | Endpoint | Success | Failure |
@@ -13,7 +13,11 @@ The only application endpoints are these probes. Machine-readable specification:
 Both send `Cache-Control: no-store`. Readiness checks connectivity and a trivial SQL query,
 not migrations/schema, Redis, or future worker availability. No authentication is required.
 
-## Planned domain API, not registered routes
+## Phase 2 authentication and planned domain API
+
+The five `/auth/*` routes below are implemented in Phase 2. All event, organizer, and
+reservation HTTP routes remain unregistered. The full implemented specification, including
+cookie/CSRF security schemes, is [api.openapi.yaml](api.openapi.yaml).
 
 Base path `/api/v1`. JSON requests/responses, UUID resource IDs, RFC 3339 UTC timestamps.
 Unknown/extra mutation fields will be rejected. No client-supplied role, reservation state,
@@ -60,8 +64,9 @@ expired, and stored allocated_seats to avoid presenting incompatible counts as e
 
 ## Validation and errors
 
-Planned mutation errors use `{"error":{"code":"...","message":"..."}}`. FastAPI request
-validation remains its standard 422 `detail` structure; health responses use the schema above.
+Implemented auth errors and planned mutation errors use `{"error":{"code":"...","message":"..."}}`.
+Validation uses 422 `detail` with type/loc/msg; submitted input and ctx are omitted to prevent
+credential disclosure. Health responses use the schema above.
 Use 401 for missing/invalid authentication, 403 for role/CSRF failure, and 404 for unavailable
 resources (including another user's private resource). Reject unsupported media types with 415.
 
@@ -91,6 +96,21 @@ Clients retain a key across network retries and fetch the current resource after
 A new intentional attempt, including retrying after a stored EVENT_FULL, uses a new key.
 Authenticated/idempotent responses use no-store. Auth/CSRF validation still precedes replay.
 
-State/locking rules are normative in [concurrency.md](../concurrency.md). Future domain
-request/response DTOs and their OpenAPI schemas will be implemented with each phase;
-this document does not claim those routes currently exist.
+State/locking rules are normative in [concurrency.md](../concurrency.md). Future event and
+reservation DTOs and OpenAPI schemas will be implemented with each phase; those routes
+do not currently exist. Authentication is implemented as described below.
+
+## Authentication details
+
+Registration: password length 15-128; response contains `user: {id, email, role}` and a fresh
+anonymous csrf_token. Email normalization and session/security policy are in [security](../security.md).
+Login: password length 1-128; successful response has the same shape with a fresh authenticated
+csrf_token and cookie. Register/login reject extra fields, including role, IDs, and active status.
+Logout requires a JSON empty object, Origin (or trusted Referer fallback), cookie, and token;
+success is an empty 204 response clearing the cookie. Current user returns only id/email/role.
+CSRF bootstrap returns only csrf_token, with a cookie when a new pre-session is created.
+
+Auth errors: 401 AUTHENTICATION_REQUIRED or INVALID_CREDENTIALS; 403 CSRF_FAILED/FORBIDDEN;
+409 REGISTRATION_UNAVAILABLE; 415 UNSUPPORTED_MEDIA_TYPE; 503 TEMPORARILY_UNAVAILABLE.
+There is no public organizer-provisioning endpoint. Roles can be exercised through reusable
+dependencies and local promotion, not through unfinished organizer/event routes.

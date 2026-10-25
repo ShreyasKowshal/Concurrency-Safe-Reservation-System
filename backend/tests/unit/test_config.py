@@ -42,7 +42,17 @@ def test_invalid_redis_url_is_rejected(settings: Settings, url: str) -> None:
 
 @pytest.mark.parametrize(
     "origin",
-    ["*", "http://localhost/path", "http://u:p@localhost", "http://localhost?x=1"],
+    [
+        "*",
+        "http://localhost/path",
+        "http://u:p@localhost",
+        "http://localhost?x=1",
+        " http://localhost",
+        "http://local\thost",
+        "http://@localhost",
+        "http://localhost?",
+        "http://localhost#",
+    ],
 )
 def test_public_origin_must_be_an_exact_origin(settings: Settings, origin: str) -> None:
     with pytest.raises(ValidationError):

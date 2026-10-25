@@ -1,4 +1,4 @@
-"""Engine lifecycle only. Domain models and transaction services arrive in later phases."""
+"""Engine ownership. Services own transactions; sessions are never shared across requests."""
 
 from sqlalchemy import Engine, create_engine
 
