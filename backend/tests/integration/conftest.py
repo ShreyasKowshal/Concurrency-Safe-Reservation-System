@@ -15,10 +15,12 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session
 
 from csrs.auth.crypto import hash_password
+from csrs.auth.service import issue_session as reservation_issue_session
 from csrs.config import Settings
 from csrs.database import create_database_engine
 from csrs.main import create_app
 from csrs.models import Event, Role, User
+from csrs.reservations import service as reservation_service
 
 BACKEND = Path(__file__).resolve().parents[2]
 PASSWORD = "Correct horse battery staple 2026!"
@@ -180,3 +182,39 @@ def event_factory(clean_engine):
         return event
 
     return create
+
+
+@pytest.fixture
+def booking(clean_engine, user_factory, event_factory, postgres_settings):
+    owner = user_factory("organizer@example.com", role=Role.ORGANIZER)
+    attendee = user_factory()
+    event = event_factory(owner, status="PUBLISHED")
+
+    def credentials(user):
+        with Session(clean_engine) as db, db.begin():
+            return reservation_issue_session(db, postgres_settings, user)
+
+    session = credentials(attendee)
+    owner_session = credentials(owner)
+
+    def execute(action="hold", resource_id=None, key=None, actor_session=None):
+        actor_session = actor_session or session
+        with Session(clean_engine, expire_on_commit=False) as db:
+            return reservation_service.command(
+                db,
+                actor_session.cookie,
+                actor_session.csrf_token,
+                resource_id or event.id,
+                action,
+                key or uuid.uuid4().hex,
+            )
+
+    return {
+        "owner": owner,
+        "user": attendee,
+        "event": event,
+        "session": session,
+        "owner_session": owner_session,
+        "credentials": credentials,
+        "execute": execute,
+    }

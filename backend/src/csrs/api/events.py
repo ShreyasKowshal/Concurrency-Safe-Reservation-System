@@ -1,4 +1,4 @@
-"""Public event discovery and owner-only organizer commands; no reservation routes."""
+"""Public event discovery and owner-only organizer commands."""
 
 from typing import Annotated
 from uuid import UUID

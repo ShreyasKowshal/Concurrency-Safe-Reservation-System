@@ -128,7 +128,7 @@ def test_openapi_protects_organizer_operations_and_preserves_path_query_paramete
                 assert operation["security"] == [expected]
                 if "{event_id}" in path:
                     assert any(p["name"] == "event_id" for p in operation["parameters"])
-        if path.startswith("/api/v1/events"):
+        if path.startswith("/api/v1/events") and "get" in operations:
             assert "security" not in operations["get"]
     listing = document["paths"]["/api/v1/organizer/events"]["get"]
     assert {p["name"] for p in listing["parameters"]} == {"limit", "cursor"}

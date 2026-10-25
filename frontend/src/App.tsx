@@ -36,7 +36,7 @@ export function App() {
 
   return (
     <main>
-      <p className="eyebrow">CSRS / Phase 3</p>
+      <p className="eyebrow">CSRS / Phase 4</p>
       <h1>Concurrency-Safe Reservation System</h1>
       <p className="intro">
         Project foundation for reliable event reservations, with PostgreSQL as the source of truth.

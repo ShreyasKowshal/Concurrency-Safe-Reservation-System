@@ -3,13 +3,13 @@
 A full-stack event/workshop reservation project focused on PostgreSQL transactions,
 concurrent capacity allocation, idempotency, and failure recovery.
 
-**Current implementation: Phase 3, pending review.** The API provides health checks,
-session authentication/CSRF, public event discovery, and owner-only event creation, editing,
-capacity changes, publication, and closing. Five PostgreSQL tables are managed by Alembic;
-Phase 3 requires no new migration. React remains a health screen; authentication/event forms,
-booking operations, Redis limiting/caching, and the worker remain future work. No cloud
-infrastructure is provisioned. See the [Phase 3 evidence](docs/phase-3-validation.md) and
-[beginner explanation](docs/phase-explanations/phase-3-explanation.md).
+**Current implementation: Phase 4, locally verified and awaiting review.** The API provides
+health checks, session authentication/CSRF, event management, one-seat holds, confirmation,
+cancellation, request-time expiration, durable idempotency, private history, and advisory
+availability. Five PostgreSQL tables use the existing `0001_foundation` migration. React remains
+a health screen. The expiration worker, Redis limiting/caching, booking/dashboard UI, and
+production deployment remain future work. See the [Phase 4 evidence](docs/phase-4-validation.md)
+and [beginner explanation](docs/phase-explanations/phase-4-explanation.md).
 
 ## Repository structure
 
@@ -17,7 +17,7 @@ infrastructure is provisioned. See the [Phase 3 evidence](docs/phase-3-validatio
 csrs/
   .github/                 # GitHub Actions and dependency update configuration
   backend/
-    src/csrs/              # App, models, auth/event services, CLI, health/auth/event routes
+    src/csrs/              # App, models, auth/event/reservation services, CLI, API routes
     migrations/            # Alembic runner and 0001_foundation revision
     scripts/               # Explicit health/full API contract exporter
     tests/unit/            # Configuration, crypto, health, and contract checks
@@ -31,7 +31,7 @@ csrs/
     package-lock.json      # Reproducible npm dependency resolution
     Dockerfile
   docs/
-    contracts/             # Implemented health OpenAPI and planned domain API
+    contracts/             # Implemented API/OpenAPI contracts; future dashboard contract
     architecture.md
     database.md
     concurrency.md
@@ -79,7 +79,7 @@ Rebuild the backend image after Python dependency changes.
 
 The browser uses Vite's same-origin `/api` proxy. Use `localhost:5173` consistently with
 `CSRS_PUBLIC_ORIGIN`; do not switch to a different host alias when testing later CSRF behavior.
-Redis runs locally but is intentionally not queried by the Phase 2 application. Apply the
+Redis runs locally but is intentionally not queried by the application. Apply the
 migration before using authentication. Readiness still checks connectivity, not schema currency.
 Migrations are explicit administrative steps, never automatic per-API-process startup work.
 
@@ -90,7 +90,8 @@ docker compose down
 ```
 
 Do not add `--volumes` unless intentionally discarding local data. Changing initialization
-credentials does not change an already initialized PostgreSQL volume. See [infrastructure notes](infra/README.md).
+credentials does not change an already initialized PostgreSQL volume. See [infrastructure
+notes](infra/README.md).
 
 ## Tests in Docker: isolated PostgreSQL
 
@@ -170,7 +171,7 @@ framework yet. The health screen has no business actions or authentication place
 - [Implemented relational foundation and constraints](docs/database.md)
 - [Transactions, capacity invariant, states, expiration, and retries](docs/concurrency.md)
 - [Anonymous and authenticated CSRF/session design](docs/security.md)
-- [Implemented health/auth/events and planned reservation API](docs/contracts/api.md)
+- [Implemented health/auth/events/reservations and planned dashboard API](docs/contracts/api.md)
 - [Decision records](docs/decisions.md)
 - [Phase gates and future concurrency evidence](docs/phases.md)
 - [Completed Phase 1 validation](docs/phase-1-validation.md)
@@ -219,12 +220,48 @@ uses `httpx2`; it is a development dependency, not an application HTTP integrati
 GitHub Actions defines backend lint/format/unit/contract checks, required real PostgreSQL
 integration tests, a frontend build, Docker image builds, and a Compose health/proxy smoke check.
 The workflow also applies/checks development migrations and exercises migrations in isolated
-PostgreSQL tests. Phase 3 checks run locally before review; hosted CI for Phase 3 requires a
+PostgreSQL tests. Phase 4 checks run locally before review; hosted CI for Phase 4 requires a
 later authorized commit/push. No deployment secret is required for these checks.
 
 `.env`, local environments, package caches, build output, and common key files are ignored.
 `.env.example` contains public local examples only. No production credentials are required.
 Do not log settings dumps with revealed secret values or commit database backups.
 
-Phase 3 does not establish reservation correctness or performance metrics. Those claims
-require the later transaction implementation and reproducible PostgreSQL race/failure tests.
+Phase 4 includes reproducible PostgreSQL contention/failure tests with two independent API
+processes. These establish the tested correctness scenarios; they are not production load
+or latency/throughput measurements. No Phase 4 commit or push has been authorized.
+
+## Reservation API and retry keys
+
+All paths use `/api/v1`. Hold, confirm, and cancel accept JSON `{}` and require the authenticated
+cookie, trusted Origin, session-bound `X-CSRF-Token`, and `Idempotency-Key` (1-128 visible ASCII
+characters without spaces). A successful hold returns 201; confirmation/cancellation return 200.
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| POST | `/events/{event_id}/holds` | Hold one seat for up to five minutes |
+| POST | `/reservations/{reservation_id}/confirm` | Confirm an owned valid hold |
+| POST | `/reservations/{reservation_id}/cancel` | Cancel an owned reservation |
+| GET | `/reservations/{reservation_id}` | Read owned current effective state |
+| GET | `/me/reservations` | Private paginated history, limit 20 by default, maximum 100 |
+| GET | `/events/{event_id}/availability` | Public PUBLISHED-event advisory snapshot |
+
+`CSRS_HOLD_TTL_SECONDS` defaults to 300 (range 1-3600). A hold is capped by the event's
+booking deadline. Database time after the event lock decides validity; equality is expired.
+Capacity edits reclaim due holds under that same lock. Closing stops new holds and preserves
+valid confirmations. Terminal rows remain history.
+
+Retain the **same key** after a lost response or uncertain 503/network outcome. Replays return
+the original status/body and `Idempotency-Replayed: true`; new executions return false.
+Fetch the reservation after replay to see current state. Stored business conflicts replay too;
+a new intentional attempt uses a new key. Security/validation/transient database failures do
+not create completed outcomes. No background expiration worker or key-retention cleanup exists.
+
+Live Compose smoke with generated temporary accounts/event and scoped cleanup:
+
+```powershell
+docker compose exec -T backend python scripts/smoke_reservations.py
+```
+
+The helper is for the local environment and requires running backend, frontend proxy, and
+migrations. It prints only status labels and restores the original application table counts.

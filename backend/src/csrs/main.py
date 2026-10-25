@@ -13,6 +13,7 @@ from csrs.api.auth import router as auth_router
 from csrs.api.events import organizer_router, public_router
 from csrs.api.health import router as health_router
 from csrs.api.openapi import install_auth_schema
+from csrs.api.reservations import router as reservation_router
 from csrs.auth.errors import AuthError
 from csrs.config import Settings
 from csrs.database import create_database_engine
@@ -33,8 +34,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app = FastAPI(
         title=configuration.app_name,
-        version="0.3.0",
-        description="CSRS health, authentication, and event management. Booking is not implemented",
+        version="0.4.0",
+        description="CSRS health, authentication, events, and concurrency-safe reservations.",
         lifespan=lifespan,
     )
     app.state.settings = configuration
@@ -43,7 +44,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def prevent_sensitive_caching(request: Request, call_next):
         response = await call_next(request)
         if request.url.path.startswith(
-            ("/api/v1/auth/", "/api/v1/organizer/events", "/api/v1/events")
+            (
+                "/api/v1/auth/",
+                "/api/v1/organizer/events",
+                "/api/v1/events",
+                "/api/v1/reservations",
+                "/api/v1/me/reservations",
+            )
         ):
             response.headers["Cache-Control"] = "no-store"
         return response
@@ -85,5 +92,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(auth_router, prefix="/api/v1")
     app.include_router(public_router, prefix="/api/v1")
     app.include_router(organizer_router, prefix="/api/v1")
+    app.include_router(reservation_router, prefix="/api/v1")
     install_auth_schema(app, configuration)
     return app

@@ -1,4 +1,4 @@
-"""PostgreSQL schema. Reservation mutations must later follow the event-lock protocol."""
+"""PostgreSQL schema. Reservation mutations follow the shared event-lock protocol."""
 
 import uuid
 from datetime import datetime

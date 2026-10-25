@@ -2,8 +2,9 @@
 
 **Implemented in Phase 2:** registration, login, logout, current user, session bootstrap,
 CSRF/origin validation, role guards, and local organizer provisioning. Phase 3 applies these
-protections to event mutations and owner-only reads. Reservation mutations remain future
-contracts. The React page is still a health screen, not an auth or event-management UI.
+protections to event mutations and owner-only reads. Phase 4 applies them to reservation
+commands, reads, and idempotent replays. The React page is still a health screen, not an auth or
+event-management UI.
 
 ## Sessions and roles
 
@@ -116,8 +117,9 @@ Rate limiting and automatic maintenance scheduling remain deferred; run bounded 
 cleanup manually in this phase. No email verification, password recovery, MFA, or auth UI
 is implemented. Cookie/CSRF protection does not substitute for those later product controls.
 Phase 3 event mutation handlers combine the HTTP origin/JSON guard with session/CSRF validation
-inside their service transaction and recheck after an event lock wait. Future reservation
-handlers must do the same; a read-only role dependency alone does not authorize a write.
+inside their service transaction and recheck after an event lock wait. Phase 4 reservation
+handlers do the same, and recheck after waiting on an idempotency claim; a read-only role dependency
+alone does not authorize a write.
 Ownership guards must receive the owner ID read from the stored resource, never a claimed body ID.
 
 ## Phase 2 security acceptance tests
@@ -132,6 +134,9 @@ Ownership guards must receive the owner ID read from the stored resource, never 
 - Public registration cannot set roles; cross-user and cross-organizer access is denied.
 - Browser integration through the Vite proxy demonstrates cookie and header behavior.
 
-References: [OWASP CSRF prevention](https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html),
-[session management](https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html),
-[password storage](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html).
+References: [OWASP CSRF
+prevention](https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html),
+[session
+management](https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html),
+[password
+storage](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html).

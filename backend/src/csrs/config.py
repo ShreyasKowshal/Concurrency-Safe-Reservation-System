@@ -28,6 +28,7 @@ class Settings(BaseSettings):
     db_max_overflow: int = Field(default=5, ge=0, le=20)
     anonymous_session_ttl_seconds: int = Field(default=900, ge=60, le=3600)
     session_ttl_seconds: int = Field(default=28800, ge=300, le=604800)
+    hold_ttl_seconds: int = Field(default=300, ge=1, le=3600)
 
     @property
     def secure_cookies(self) -> bool:

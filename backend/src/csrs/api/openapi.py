@@ -28,7 +28,12 @@ def install_auth_schema(app: FastAPI, settings: Settings) -> None:
             },
         }
         for path, operations in document["paths"].items():
-            if not path.startswith(("/api/v1/auth/", "/api/v1/organizer/events")):
+            reservation = path.startswith(
+                ("/api/v1/reservations/", "/api/v1/me/reservations")
+            ) or path.endswith("/holds")
+            if not reservation and not path.startswith(
+                ("/api/v1/auth/", "/api/v1/organizer/events")
+            ):
                 continue
             for method, operation in operations.items():
                 if method in {"post", "patch", "put", "delete"}:
@@ -44,7 +49,11 @@ def install_auth_schema(app: FastAPI, settings: Settings) -> None:
                             }
                         ]
                     )
-                elif path.endswith("/me") or path.startswith("/api/v1/organizer/events"):
+                elif (
+                    reservation
+                    or path.endswith("/me")
+                    or path.startswith("/api/v1/organizer/events")
+                ):
                     operation["security"] = [{"SessionCookie": []}]
         app.openapi_schema = document
         return document

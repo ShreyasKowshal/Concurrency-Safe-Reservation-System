@@ -1,8 +1,8 @@
 openapi: 3.1.0
 info:
   title: CSRS
-  description: CSRS health, authentication, and event management. Booking is not implemented
-  version: 0.3.0
+  description: CSRS health, authentication, events, and concurrency-safe reservations.
+  version: 0.4.0
 paths:
   /api/v1/health/live:
     get:
@@ -914,6 +914,532 @@ paths:
       security:
       - SessionCookie: []
         CsrfToken: []
+  /api/v1/events/{event_id}/holds:
+    post:
+      tags:
+      - reservations
+      summary: Hold
+      operationId: hold_api_v1_events__event_id__holds_post
+      parameters:
+      - name: event_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Event Id
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 128
+          pattern: ^[!-~]+$
+          title: Idempotency-Key
+      - name: Origin
+        in: header
+        required: false
+        description: Trusted Origin, or Referer fallback, is required.
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmptyRequest'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReservationResponse'
+          headers:
+            Idempotency-Replayed:
+              description: Whether this is the original stored outcome.
+              schema:
+                type: string
+                enum:
+                - 'true'
+                - 'false'
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '409':
+          headers:
+            Idempotency-Replayed:
+              description: Whether this is the original stored outcome.
+              schema:
+                type: string
+                enum:
+                - 'true'
+                - 'false'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
+        '415':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unsupported Media Type
+        '503':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Service Unavailable
+        '422':
+          description: Invalid fields, idempotency key, or history cursor.
+          content:
+            application/json:
+              schema:
+                anyOf:
+                - $ref: '#/components/schemas/HTTPValidationError'
+                - $ref: '#/components/schemas/ErrorResponse'
+      security:
+      - SessionCookie: []
+        CsrfToken: []
+  /api/v1/reservations/{reservation_id}/confirm:
+    post:
+      tags:
+      - reservations
+      summary: Confirm
+      operationId: confirm_api_v1_reservations__reservation_id__confirm_post
+      parameters:
+      - name: reservation_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Reservation Id
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 128
+          pattern: ^[!-~]+$
+          title: Idempotency-Key
+      - name: Origin
+        in: header
+        required: false
+        description: Trusted Origin, or Referer fallback, is required.
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmptyRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReservationResponse'
+          headers:
+            Idempotency-Replayed:
+              description: Whether this is the original stored outcome.
+              schema:
+                type: string
+                enum:
+                - 'true'
+                - 'false'
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '409':
+          headers:
+            Idempotency-Replayed:
+              description: Whether this is the original stored outcome.
+              schema:
+                type: string
+                enum:
+                - 'true'
+                - 'false'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
+        '415':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unsupported Media Type
+        '503':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Service Unavailable
+        '422':
+          description: Invalid fields, idempotency key, or history cursor.
+          content:
+            application/json:
+              schema:
+                anyOf:
+                - $ref: '#/components/schemas/HTTPValidationError'
+                - $ref: '#/components/schemas/ErrorResponse'
+      security:
+      - SessionCookie: []
+        CsrfToken: []
+  /api/v1/reservations/{reservation_id}/cancel:
+    post:
+      tags:
+      - reservations
+      summary: Cancel
+      operationId: cancel_api_v1_reservations__reservation_id__cancel_post
+      parameters:
+      - name: reservation_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Reservation Id
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 128
+          pattern: ^[!-~]+$
+          title: Idempotency-Key
+      - name: Origin
+        in: header
+        required: false
+        description: Trusted Origin, or Referer fallback, is required.
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmptyRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReservationResponse'
+          headers:
+            Idempotency-Replayed:
+              description: Whether this is the original stored outcome.
+              schema:
+                type: string
+                enum:
+                - 'true'
+                - 'false'
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '409':
+          headers:
+            Idempotency-Replayed:
+              description: Whether this is the original stored outcome.
+              schema:
+                type: string
+                enum:
+                - 'true'
+                - 'false'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
+        '415':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unsupported Media Type
+        '503':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Service Unavailable
+        '422':
+          description: Invalid fields, idempotency key, or history cursor.
+          content:
+            application/json:
+              schema:
+                anyOf:
+                - $ref: '#/components/schemas/HTTPValidationError'
+                - $ref: '#/components/schemas/ErrorResponse'
+      security:
+      - SessionCookie: []
+        CsrfToken: []
+  /api/v1/reservations/{reservation_id}:
+    get:
+      tags:
+      - reservations
+      summary: Detail
+      operationId: detail_api_v1_reservations__reservation_id__get
+      parameters:
+      - name: reservation_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Reservation Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReservationResponse'
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
+        '415':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unsupported Media Type
+        '503':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Service Unavailable
+        '422':
+          description: Invalid fields, idempotency key, or history cursor.
+          content:
+            application/json:
+              schema:
+                anyOf:
+                - $ref: '#/components/schemas/HTTPValidationError'
+                - $ref: '#/components/schemas/ErrorResponse'
+      security:
+      - SessionCookie: []
+  /api/v1/me/reservations:
+    get:
+      tags:
+      - reservations
+      summary: History
+      operationId: history_api_v1_me_reservations_get
+      parameters:
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 100
+          minimum: 1
+          default: 20
+          title: Limit
+      - name: cursor
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            minLength: 1
+            maxLength: 512
+          - type: 'null'
+          title: Cursor
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReservationPage'
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
+        '415':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unsupported Media Type
+        '503':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Service Unavailable
+        '422':
+          description: Invalid fields, idempotency key, or history cursor.
+          content:
+            application/json:
+              schema:
+                anyOf:
+                - $ref: '#/components/schemas/HTTPValidationError'
+                - $ref: '#/components/schemas/ErrorResponse'
+      security:
+      - SessionCookie: []
+  /api/v1/events/{event_id}/availability:
+    get:
+      tags:
+      - reservations
+      summary: Availability
+      operationId: availability_api_v1_events__event_id__availability_get
+      parameters:
+      - name: event_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Event Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Availability'
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
+        '415':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unsupported Media Type
+        '503':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Service Unavailable
+        '422':
+          description: Invalid fields, idempotency key, or history cursor.
+          content:
+            application/json:
+              schema:
+                anyOf:
+                - $ref: '#/components/schemas/HTTPValidationError'
+                - $ref: '#/components/schemas/ErrorResponse'
 components:
   schemas:
     AuthResponse:
@@ -928,6 +1454,29 @@ components:
       - csrf_token
       - user
       title: AuthResponse
+    Availability:
+      properties:
+        event_id:
+          type: string
+          format: uuid
+          title: Event Id
+        capacity:
+          type: integer
+          title: Capacity
+        available_seats:
+          type: integer
+          title: Available Seats
+        as_of:
+          type: string
+          format: date-time
+          title: As Of
+      type: object
+      required:
+      - event_id
+      - capacity
+      - available_seats
+      - as_of
+      title: Availability
     CapacityUpdate:
       properties:
         capacity:
@@ -1371,6 +1920,83 @@ components:
       - email
       - password
       title: RegisterRequest
+    ReservationPage:
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/ReservationResponse'
+          type: array
+          title: Items
+        next_cursor:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Next Cursor
+      type: object
+      required:
+      - items
+      - next_cursor
+      title: ReservationPage
+    ReservationResponse:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        event_id:
+          type: string
+          format: uuid
+          title: Event Id
+        status:
+          type: string
+          enum:
+          - HELD
+          - CONFIRMED
+          - CANCELLED
+          - EXPIRED
+          title: Status
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        hold_expires_at:
+          type: string
+          format: date-time
+          title: Hold Expires At
+        confirmed_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Confirmed At
+        cancelled_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Cancelled At
+        expired_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Expired At
+        server_time:
+          type: string
+          format: date-time
+          title: Server Time
+      type: object
+      required:
+      - id
+      - event_id
+      - status
+      - created_at
+      - hold_expires_at
+      - confirmed_at
+      - cancelled_at
+      - expired_at
+      - server_time
+      title: ReservationResponse
     Role:
       type: string
       enum:

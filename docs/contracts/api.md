@@ -13,11 +13,12 @@ These health endpoints remain unchanged. Machine-readable specification:
 Both send `Cache-Control: no-store`. Readiness checks connectivity and a trivial SQL query,
 not migrations/schema, Redis, or future worker availability. No authentication is required.
 
-## Implemented authentication/events and planned reservation API
+## Implemented authentication, events, and reservations
 
 The five `/auth/*` routes below are implemented in Phase 2. Phase 3 adds public event list/detail
-and organizer create/list/detail/edit/capacity/publish/close. Availability, dashboards, and all
-reservation routes remain planned and unregistered. The full implemented specification,
+and organizer create/list/detail/edit/capacity/publish/close. Phase 4 adds holds, confirmation,
+cancellation, owner-only detail/history, and public advisory availability. The organizer
+dashboard remains planned and unregistered. The full implemented specification,
 including cookie/CSRF security schemes, is [api.openapi.yaml](api.openapi.yaml).
 
 Base path `/api/v1`. JSON requests/responses, UUID resource IDs, RFC 3339 UTC timestamps.
@@ -56,7 +57,7 @@ Pagination: default 20, maximum 100, opaque cursor with stable ordering and ID t
 Phase 3 pages use `items` and `next_cursor` (null on the last page).
 Event summaries contain id/title/location/starts_at/booking_closes_at/status/capacity;
 details additionally contain description/ends_at/organizer_id. Organizer responses may include
-allocated_seats; Phase 3 includes that field only on organizer responses. Planned public
+allocated_seats; Phase 3 includes that field only on organizer responses. Public
 availability is computed in one consistent query from valid holds and
 confirmed rows. Availability is no guarantee that a later hold succeeds and is not cached.
 
@@ -105,9 +106,9 @@ Clients retain a key across network retries and fetch the current resource after
 A new intentional attempt, including retrying after a stored EVENT_FULL, uses a new key.
 Authenticated/idempotent responses use no-store. Auth/CSRF validation still precedes replay.
 
-State/locking rules are normative in [concurrency.md](../concurrency.md). Event DTOs and OpenAPI
-schemas are implemented in Phase 3. Reservation/availability/dashboard DTOs and routes remain
-future work. Authentication is implemented as described below.
+State/locking rules are normative in [concurrency.md](../concurrency.md). Event DTOs/OpenAPI
+are implemented in Phase 3; reservation/availability DTOs/OpenAPI in Phase 4. Dashboard
+DTOs and routes remain future work. Authentication is implemented as described below.
 
 ## Phase 3 event rules and clarified contract details
 
@@ -159,16 +160,16 @@ All event responses currently use no-store, including public responses; Redis is
 Validation errors omit submitted values. Event 422 responses can be sanitized `detail` errors
 or the controlled INVALID_EVENT_SCHEDULE/INVALID_CURSOR envelope; OpenAPI describes both.
 
-**Phase 4 integration requirement:** Phase 3 capacity changes compare against the stored
-counter, including overdue persisted HELD rows, and never expire reservations. Reductions may
-therefore be conservatively refused. Phase 4 must add the shared due-hold cleanup under the
-same event lock before capacity admission/edits, without changing lock order or introducing
-an independent commit. Closing must continue to leave existing holds/confirmed rows intact.
+**Phase 4 integration:** capacity changes clean due HELD rows under the same event lock
+before comparing against allocated_seats. Useful cleanup commits even if a capacity reduction
+is refused. Reservation commands store business conflicts and useful cleanup atomically.
+Closing leaves existing holds/confirmed rows intact. No independent cleanup commit is used.
 
 ## Authentication details
 
 Registration: password length 15-128; response contains `user: {id, email, role}` and a fresh
-anonymous csrf_token. Email normalization and session/security policy are in [security](../security.md).
+anonymous csrf_token. Email normalization and session/security policy are in
+[security](../security.md).
 Login: password length 1-128; successful response has the same shape with a fresh authenticated
 csrf_token and cookie. Register/login reject extra fields, including role, IDs, and active status.
 Logout requires a JSON empty object, Origin (or trusted Referer fallback), cookie, and token;
@@ -179,3 +180,22 @@ Auth errors: 401 AUTHENTICATION_REQUIRED or INVALID_CREDENTIALS; 403 CSRF_FAILED
 409 REGISTRATION_UNAVAILABLE; 415 UNSUPPORTED_MEDIA_TYPE; 503 TEMPORARILY_UNAVAILABLE.
 There is no public organizer-provisioning endpoint. Roles can be exercised through reusable
 dependencies and local promotion, not through unfinished organizer/event routes.
+
+## Phase 4 implementation details
+
+Hold/confirm/cancel accept only `{}`. The key header must occur exactly once. Missing/invalid
+keys use sanitized 422 validation; malformed bodies never consume a key. Validated UUID paths
+are canonicalized before fingerprinting POST, path, and the validated body. Keys are user-wide.
+Different valid command paths with the same key return IDEMPOTENCY_KEY_REUSED.
+
+A hold for an existing event outside PUBLISHED/open-deadline state returns BOOKING_CLOSED;
+a missing event returns 404. A cancelled confirmation returns INVALID_RESERVATION_STATE;
+an expired confirmation returns HOLD_EXPIRED and persists any due expiration. Repeat cancel
+of CANCELLED/EXPIRED and repeat confirm of CONFIRMED are 200 no-ops, including new keys.
+Ownership and current session/CSRF are checked before replay and after waits.
+
+History orders `(created_at, id)` ascending and returns `items`/`next_cursor`. Cursors are
+bounded and scoped to the authenticated user. Reservation/availability timestamps normalize
+to UTC. GETs perform no reservation writes; effective EXPIRED can have null expired_at until
+cleanup. Availability filters PUBLISHED events and uses one PostgreSQL statement/snapshot with
+a single database time sample, valid HELD plus CONFIRMED rows, and no cache.

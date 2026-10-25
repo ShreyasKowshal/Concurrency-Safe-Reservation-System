@@ -423,7 +423,15 @@ def test_missing_and_malformed_ids_are_safe(client, organizer):
         assert client.get(f"{base}/not-a-uuid").status_code == 422
     assert client.get(f"{PUBLIC}/{uuid4()}/availability").status_code == 404
     assert client.get(f"{BASE}/{uuid4()}/dashboard").status_code == 404
-    assert client.post(f"{PUBLIC}/{uuid4()}/holds", json={}).status_code == 404
+    _, headers = organizer
+    assert (
+        client.post(
+            f"{PUBLIC}/{uuid4()}/holds",
+            json={},
+            headers=headers | {"Idempotency-Key": "missing-event"},
+        ).status_code
+        == 404
+    )
 
 
 def test_published_discovery_is_not_a_booking_eligibility_claim(client, organizer, event_factory):
@@ -441,8 +449,9 @@ def test_published_discovery_is_not_a_booking_eligibility_claim(client, organize
     assert client.get(f"{PUBLIC}/{old.id}").status_code == 200
 
 
-def test_capacity_respects_consistent_seeded_allocations_without_expiring_holds(
-    client, organizer, user_factory, event_factory, db
+@pytest.mark.parametrize("due", [False, True])
+def test_capacity_respects_allocations_and_reclaims_due_holds(
+    client, organizer, user_factory, event_factory, db, due
 ):
     owner, headers = organizer
     event = event_factory(owner, status="PUBLISHED")
@@ -456,24 +465,20 @@ def test_capacity_respects_consistent_seeded_allocations_without_expiring_holds(
                     user_id=attendee.id,
                     status="HELD",
                     created_at=now - timedelta(hours=2),
-                    hold_expires_at=now - timedelta(hours=1),
+                    hold_expires_at=now + timedelta(hours=-1 if due else 1),
                 )
             )
         db.execute(update(Event).where(Event.id == event.id).values(allocated_seats=3))
     url = f"{BASE}/{event.id}/capacity"
-    rejected = client.patch(url, json={"capacity": 2}, headers=headers)
-    assert (
-        rejected.status_code == 409
-        and rejected.json()["error"]["code"] == "CAPACITY_BELOW_ALLOCATED"
-    )
+    reply = client.patch(url, json={"capacity": 2}, headers=headers)
+    assert reply.status_code == (200 if due else 409)
+    if not due:
+        assert reply.json()["error"]["code"] == "CAPACITY_BELOW_ALLOCATED"
     assert client.patch(url, json={"capacity": 3}, headers=headers).status_code == 200
     assert client.patch(url, json={"capacity": 20}, headers=headers).status_code == 200
     with db.begin():
         stored = db.get(Event, event.id)
-        assert stored.allocated_seats == 3 and stored.capacity == 20
-        assert (
-            db.scalar(
-                select(func.count()).select_from(Reservation).where(Reservation.status == "HELD")
-            )
-            == 3
-        )
+        assert stored.allocated_seats == (0 if due else 3) and stored.capacity == 20
+        assert db.scalar(
+            select(func.count()).select_from(Reservation).where(Reservation.status == "HELD")
+        ) == (0 if due else 3)

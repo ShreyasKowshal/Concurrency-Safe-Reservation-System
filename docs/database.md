@@ -27,7 +27,8 @@ alone cannot authenticate a user. Both values are redacted from logs. See [secur
 - Each row represents exactly one seat; no quantity field in the MVP.
 - Every row originates as HELD with a non-null deadline after creation.
 - Event/user IDs are immutable. Terminal rows remain for history.
-- CONFIRMED requires `confirmed_at`; CANCELLED requires `cancelled_at`; EXPIRED requires `expired_at`.
+- CONFIRMED requires `confirmed_at`; CANCELLED requires `cancelled_at`; EXPIRED requires
+`expired_at`.
 - Cancelled confirmed rows retain `confirmed_at`. Expired rows cannot have been confirmed.
 - A partial unique index on `(user_id, event_id)` where status is HELD or CONFIRMED prevents
   multiple active reservations, including attempts with different idempotency keys.
@@ -36,7 +37,7 @@ alone cannot authenticate a user. Both values are redacted from logs. See [secur
 - Restrict hard deletion of referenced users/events; preserve reservation and idempotency history.
 
 Timestamp consistency needs CHECK constraints, while transition legality and immutability are
-enforced by the future centralized reservation service. The migration contains explicit,
+enforced by the centralized Phase 4 reservation service. The migration contains explicit,
 named CHECKs for state/timestamp combinations, strict confirmation-before-deadline and
 expiration-at-or-after-deadline boundaries. It does not implement reservation transitions.
 
@@ -80,13 +81,14 @@ state migrations. All foreign keys use RESTRICT. Session cookie digests and CSRF
 fingerprints are 64 lowercase hexadecimal characters. A pending idempotency row has all
 response fields NULL; a completed row requires a 200-499 status, object JSONB body, and
 completion timestamp. SQL NULL checks are explicit, so three-valued CHECK logic cannot admit
-a partially completed response. The future transaction protocol must prevent committing a
-pending claim separately; no idempotency command service exists yet.
+a partially completed response. The Phase 4 command service prevents committing a pending claim
+separately: claim,
+mutation/counter, and completed response share one transaction.
 
 Created timestamps default to PostgreSQL transaction time. User/event/reservation updated_at
 defaults on insert and is updated by SQLAlchemy updates; no timestamp triggers are installed.
 Administrative SQL must explicitly maintain updated_at. Organizer-role eligibility and
-immutable reservation owner/event IDs are future service rules, not cross-table CHECKs.
+immutable reservation owner/event IDs are service rules, not cross-table CHECKs.
 
 The initial upgrade only creates tables/indexes. Reapplying head is a no-op and is tested to
 preserve existing rows. Downgrade removes these tables and is tested only on generated

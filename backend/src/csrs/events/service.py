@@ -1,7 +1,6 @@
 """Explicit event transactions. All existing-event writes take the event lock first.
 
-Capacity uses the stored allocation conservatively. Phase 4 must add due-hold cleanup
-under this same lock; Phase 3 never mutates reservation or idempotency rows.
+Capacity edits share reservation expiration under this same event lock.
 """
 
 from collections.abc import Iterator
@@ -27,6 +26,7 @@ from csrs.events.schemas import (
     PublicEventPage,
 )
 from csrs.models import Event, SessionKind, User
+from csrs.reservations.transitions import expire_due_holds
 
 
 def _organizer(db: Session, cookie: str | None, csrf: str | None) -> User:
@@ -106,16 +106,21 @@ def edit_event(
 def change_capacity(
     db: Session, cookie: str | None, csrf: str | None, event_id: UUID, capacity: int
 ) -> OrganizerEvent:
+    error = None
     with _owned_event(db, cookie, csrf, event_id) as event:
         if event.status == "CLOSED":
             raise _invalid_state()
+        expire_due_holds(db, event, database_time(db))
         if capacity < event.allocated_seats:
-            raise EventError(
+            error = EventError(
                 409, "CAPACITY_BELOW_ALLOCATED", "Capacity cannot be below allocated seats."
             )
-        event.capacity = capacity
+        else:
+            event.capacity = capacity
         db.flush()
         result = OrganizerEvent.model_validate(event)
+    if error is not None:
+        raise error
     return result
 
 

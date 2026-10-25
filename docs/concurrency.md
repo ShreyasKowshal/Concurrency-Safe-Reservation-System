@@ -1,14 +1,14 @@
 # Reservation protocol and state machine
 
-**Event-row locking for organizer edits/publication/closing is implemented in Phase 3.**
-Reservation commands, request-time expiration, and the worker below remain Phase 4-5 contracts.
-Phase 3 capacity edits conservatively use the stored counter; they do not clean due holds.
-Phase 4 must integrate that cleanup under the same lock before capacity edits/admission.
+**Implemented through Phase 4:** event-row locking, reservation commands, durable idempotency,
+and request-time expiration. Capacity edits and reservation commands share due-hold cleanup
+under the event lock. The standalone worker described below remains Phase 5 work.
 
 ## Product rules
 
 One seat per reservation and one active reservation per user/event. Attendees may rebook
-after cancellation/expiration. Hold TTL is five minutes, globally configurable later.
+after cancellation/expiration. Hold TTL defaults to five minutes; `CSRS_HOLD_TTL_SECONDS` accepts
+1-3600 seconds.
 Deadline = earlier of decision time + TTL and event booking deadline. Never create a hold
 with no remaining validity. Booking deadline must be no later than event start.
 

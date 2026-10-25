@@ -49,7 +49,7 @@ def test_readiness_failure_is_safe_and_liveness_survives(
     assert live.status_code == 200
 
 
-def test_only_health_auth_and_phase_3_event_routes_are_implemented(settings: Settings) -> None:
+def test_only_phase_1_through_4_routes_are_implemented(settings: Settings) -> None:
     app = create_app(settings)
     assert set(app.openapi()["paths"]) == {
         "/api/v1/health/live",
@@ -66,4 +66,10 @@ def test_only_health_auth_and_phase_3_event_routes_are_implemented(settings: Set
         "/api/v1/organizer/events/{event_id}/capacity",
         "/api/v1/organizer/events/{event_id}/publish",
         "/api/v1/organizer/events/{event_id}/close",
+        "/api/v1/events/{event_id}/holds",
+        "/api/v1/events/{event_id}/availability",
+        "/api/v1/reservations/{reservation_id}/confirm",
+        "/api/v1/reservations/{reservation_id}/cancel",
+        "/api/v1/reservations/{reservation_id}",
+        "/api/v1/me/reservations",
     }
