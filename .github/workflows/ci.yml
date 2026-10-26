@@ -118,14 +118,16 @@ jobs:
           docker compose stop redis
           docker compose --profile worker restart worker
           docker compose up -d --no-deps --force-recreate backend
-          curl --fail --retry 20 --retry-delay 1 --retry-connrefused http://localhost:8000/api/v1/health/ready
+          curl --fail --show-error --silent --max-time 5 --retry 20 --retry-delay 1 --retry-max-time 60 --retry-all-errors http://localhost:8000/api/v1/health/ready
           docker compose exec -T backend python scripts/smoke_redis.py outage
           docker compose up -d --wait --wait-timeout 60 redis
           docker compose exec -T backend python scripts/smoke_redis.py recovered
           docker compose --profile worker stop worker
       - name: Show service logs on failure
         if: failure()
-        run: docker compose --profile test --profile worker logs --no-color
+        run: |
+          docker compose --profile worker ps backend
+          docker compose --profile test --profile worker logs --no-color
       - name: Stop disposable CI services
         if: always()
         run: docker compose --profile test --profile worker down --volumes
