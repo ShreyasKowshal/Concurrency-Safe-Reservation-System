@@ -163,6 +163,16 @@ def get_public_event(db: Session, event_id: UUID) -> EventDetail:
         return EventDetail.model_validate(event)
 
 
+def require_public_event(db: Session, event_id: UUID) -> None:
+    """Every cache hit still checks current SQL visibility without loading the description."""
+    with db.begin():
+        if (
+            db.scalar(select(Event.id).where(Event.id == event_id, Event.status == "PUBLISHED"))
+            is None
+        ):
+            raise _not_found()
+
+
 def get_owned_event(db: Session, event_id: UUID, user: User) -> OrganizerEvent:
     with db.begin():
         event = db.get(Event, event_id)

@@ -1,5 +1,6 @@
 """Application factory with explicit configuration and engine ownership."""
 
+import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -18,19 +19,26 @@ from csrs.auth.errors import AuthError
 from csrs.config import Settings
 from csrs.database import create_database_engine
 from csrs.events.errors import EventError
+from csrs.redis_support import RedisSupport, SupportError
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
     configuration = settings if settings is not None else Settings()
+    logging.basicConfig(level=configuration.log_level.upper(), format="%(message)s")
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         engine = create_database_engine(configuration)
         app.state.database_engine = engine
+        support = RedisSupport(configuration)
+        app.state.redis_support = support
         try:
             yield
         finally:
-            engine.dispose()
+            try:
+                support.close()
+            finally:
+                engine.dispose()
 
     app = FastAPI(
         title=configuration.app_name,
@@ -39,6 +47,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         lifespan=lifespan,
     )
     app.state.settings = configuration
+
+    @app.exception_handler(SupportError)
+    async def support_error(request: Request, error: SupportError) -> JSONResponse:
+        return JSONResponse(
+            status_code=error.status,
+            content={"error": {"code": error.code, "message": error.message}},
+            headers={"Cache-Control": "no-store", "Retry-After": str(error.retry_after)},
+        )
 
     @app.middleware("http")
     async def prevent_sensitive_caching(request: Request, call_next):

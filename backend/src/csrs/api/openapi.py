@@ -28,6 +28,25 @@ def install_auth_schema(app: FastAPI, settings: Settings) -> None:
             },
         }
         for path, operations in document["paths"].items():
+            for method, operation in operations.items():
+                limited = (
+                    path in {"/api/v1/auth/csrf", "/api/v1/auth/register", "/api/v1/auth/login"}
+                    or path.startswith("/api/v1/events")
+                    or (
+                        method in {"post", "patch"}
+                        and path.startswith(("/api/v1/organizer/", "/api/v1/reservations/"))
+                    )
+                )
+                if limited:
+                    operation.setdefault("responses", {})["429"] = {
+                        "description": "Request quota exceeded (Redis support policy applies).",
+                        "headers": {"Retry-After": {"schema": {"type": "integer", "minimum": 1}}},
+                        "content": {
+                            "application/json": {
+                                "schema": {"$ref": "#/components/schemas/ErrorResponse"}
+                            }
+                        },
+                    }
             reservation = path.startswith(
                 ("/api/v1/reservations/", "/api/v1/me/reservations")
             ) or path.endswith("/holds")

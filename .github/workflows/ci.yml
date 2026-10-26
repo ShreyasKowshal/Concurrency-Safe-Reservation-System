@@ -16,6 +16,15 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     services:
+      redis:
+        image: redis:7.4-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
       postgres:
         image: postgres:17-alpine
         env:
@@ -31,6 +40,7 @@ jobs:
           --health-retries 10
     env:
       CSRS_TEST_DATABASE_URL: postgresql+psycopg://csrs_test:ci_example_only@localhost:5432/csrs_test
+      CSRS_TEST_REDIS_URL: redis://localhost:6379/15
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
@@ -99,6 +109,19 @@ jobs:
           scenario=$(docker compose exec -T backend python scripts/smoke_worker.py prepare)
           docker compose --profile worker up -d worker
           docker compose exec -T backend python scripts/smoke_worker.py verify "$scenario"
+          docker compose --profile worker stop worker
+      - name: Redis cache, outage, cold API startup, worker independence, and recovery
+        shell: bash
+        run: |
+          docker compose --profile worker up -d worker
+          docker compose exec -T backend python scripts/smoke_redis.py available
+          docker compose stop redis
+          docker compose --profile worker restart worker
+          docker compose up -d --no-deps --force-recreate backend
+          curl --fail --retry 20 --retry-delay 1 --retry-connrefused http://localhost:8000/api/v1/health/ready
+          docker compose exec -T backend python scripts/smoke_redis.py outage
+          docker compose up -d --wait --wait-timeout 60 redis
+          docker compose exec -T backend python scripts/smoke_redis.py recovered
           docker compose --profile worker stop worker
       - name: Show service logs on failure
         if: failure()

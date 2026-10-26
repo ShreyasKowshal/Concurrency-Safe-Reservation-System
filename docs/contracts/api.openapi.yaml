@@ -67,6 +67,17 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Request quota exceeded (Redis support policy applies).
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /api/v1/auth/register:
     post:
       tags:
@@ -122,6 +133,17 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+        '429':
+          description: Request quota exceeded (Redis support policy applies).
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
       security:
       - SessionCookie: []
         CsrfToken: []
@@ -181,6 +203,17 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+        '429':
+          description: Request quota exceeded (Redis support policy applies).
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
       security:
       - SessionCookie: []
         CsrfToken: []
@@ -334,11 +367,28 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
           description: Service Unavailable
+        '429':
+          description: Request quota exceeded (Redis support policy applies).
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /api/v1/events/{event_id}:
     get:
       tags:
       - public events
       summary: Public Event
+      description: 'Public metadata may be cached for the configured TTL (default
+        15s, maximum 60s).
+
+
+        Every hit checks current PostgreSQL publication visibility. Availability is
+        never cached.'
       operationId: public_event_api_v1_events__event_id__get
       parameters:
       - name: event_id
@@ -375,6 +425,17 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
           description: Service Unavailable
+        '429':
+          description: Request quota exceeded (Redis support policy applies).
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /api/v1/organizer/events:
     get:
       tags:
@@ -518,6 +579,17 @@ paths:
                 anyOf:
                 - $ref: '#/components/schemas/HTTPValidationError'
                 - $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Request quota exceeded (Redis support policy applies).
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
       security:
       - SessionCookie: []
         CsrfToken: []
@@ -671,6 +743,17 @@ paths:
                 anyOf:
                 - $ref: '#/components/schemas/HTTPValidationError'
                 - $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Request quota exceeded (Redis support policy applies).
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
       security:
       - SessionCookie: []
         CsrfToken: []
@@ -751,6 +834,17 @@ paths:
                 anyOf:
                 - $ref: '#/components/schemas/HTTPValidationError'
                 - $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Request quota exceeded (Redis support policy applies).
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
       security:
       - SessionCookie: []
         CsrfToken: []
@@ -831,6 +925,17 @@ paths:
                 anyOf:
                 - $ref: '#/components/schemas/HTTPValidationError'
                 - $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Request quota exceeded (Redis support policy applies).
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
       security:
       - SessionCookie: []
         CsrfToken: []
@@ -911,6 +1016,17 @@ paths:
                 anyOf:
                 - $ref: '#/components/schemas/HTTPValidationError'
                 - $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Request quota exceeded (Redis support policy applies).
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
       security:
       - SessionCookie: []
         CsrfToken: []
@@ -1016,6 +1132,17 @@ paths:
                 anyOf:
                 - $ref: '#/components/schemas/HTTPValidationError'
                 - $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Request quota exceeded (Redis support policy applies).
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
       security:
       - SessionCookie: []
         CsrfToken: []
@@ -1121,6 +1248,17 @@ paths:
                 anyOf:
                 - $ref: '#/components/schemas/HTTPValidationError'
                 - $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Request quota exceeded (Redis support policy applies).
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
       security:
       - SessionCookie: []
         CsrfToken: []
@@ -1226,6 +1364,17 @@ paths:
                 anyOf:
                 - $ref: '#/components/schemas/HTTPValidationError'
                 - $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Request quota exceeded (Redis support policy applies).
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
       security:
       - SessionCookie: []
         CsrfToken: []
@@ -1440,6 +1589,17 @@ paths:
                 anyOf:
                 - $ref: '#/components/schemas/HTTPValidationError'
                 - $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Request quota exceeded (Redis support policy applies).
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 components:
   schemas:
     AuthResponse:

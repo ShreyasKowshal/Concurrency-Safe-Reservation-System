@@ -40,7 +40,10 @@ def _serve(settings_values, listener, ready):
 
     Server(
         uvicorn.Config(
-            create_app(Settings(**settings_values)), log_level="critical", access_log=False
+            create_app(Settings(**settings_values)),
+            log_level="critical",
+            access_log=False,
+            proxy_headers=False,
         )
     ).run(sockets=[listener])
 

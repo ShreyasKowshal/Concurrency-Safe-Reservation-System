@@ -8,6 +8,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from csrs.api.events import Cursor, Limit, _credentials, validation_errors
+from csrs.api.redis_dependencies import mutation_quota, public_quota
 from csrs.auth.dependencies import CurrentUser, Database
 from csrs.auth.http import validate_mutation_request
 from csrs.auth.schemas import EmptyRequest, ErrorResponse
@@ -53,6 +54,7 @@ replay_headers = {
 def _command(
     request: Request, db: Database, resource_id: UUID, action: str, key: str
 ) -> JSONResponse:
+    mutation_quota(request, db)
     reply = service.command(
         db,
         *_credentials(request),
@@ -126,5 +128,6 @@ def history(db: Database, user: CurrentUser, limit: Limit = 20, cursor: Cursor =
 
 
 @router.get("/events/{event_id}/availability", response_model=Availability)
-def availability(event_id: UUID, db: Database):
+def availability(event_id: UUID, db: Database, request: Request):
+    public_quota(request)
     return service.availability(db, event_id)

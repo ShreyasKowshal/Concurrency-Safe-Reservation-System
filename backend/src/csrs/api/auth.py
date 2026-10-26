@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, Request, Response
 
+from csrs.api.redis_dependencies import anonymous_quota
 from csrs.auth import service
 from csrs.auth.dependencies import Configuration, CurrentUser, Database
 from csrs.auth.http import (
@@ -35,7 +36,11 @@ def csrf(
     request: Request, response: Response, db: Database, settings: Configuration
 ) -> CsrfResponse:
     validate_source(request, settings, bootstrap=True)
-    reply = service.bootstrap(db, settings, request.cookies.get(settings.session_cookie_name))
+    cookie = request.cookies.get(settings.session_cookie_name)
+    reply = service.bootstrap(db, settings, cookie, create=False)
+    if reply is None:
+        anonymous_quota(request, "bootstrap")
+        reply = service.bootstrap(db, settings, cookie)
     if reply.cookie:
         set_session_cookie(response, settings, reply.cookie, reply.max_age)
     return CsrfResponse(csrf_token=reply.csrf_token)
@@ -55,6 +60,7 @@ def register(
     db: Database,
     settings: Configuration,
 ) -> AuthResponse:
+    anonymous_quota(request, "auth")
     reply = service.register(
         db,
         settings,
@@ -80,6 +86,7 @@ def login(
     db: Database,
     settings: Configuration,
 ) -> AuthResponse:
+    anonymous_quota(request, "auth")
     reply = service.login(
         db,
         settings,

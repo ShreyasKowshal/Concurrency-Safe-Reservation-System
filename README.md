@@ -3,14 +3,16 @@
 A full-stack event/workshop reservation project focused on PostgreSQL transactions,
 concurrent capacity allocation, idempotency, and failure recovery.
 
-**Current implementation: Phase 5 implemented locally and awaiting review.** The API provides
+**Current implementation: Phase 6 implemented locally and awaiting review.** The API provides
 health checks, session authentication/CSRF, event management, one-seat holds, confirmation,
 cancellation, request-time expiration, durable idempotency, private history, and advisory
 availability. Five PostgreSQL tables use the foundation schema plus the Phase 5 index migration.
-React remains
-a health screen. The standalone worker adds bounded cleanup and recovery. Redis limiting/caching, booking/dashboard
-UI, and production deployment remain future work. See the [Phase 4 evidence](docs/phase-4-validation.md)
-and [beginner explanation](docs/phase-explanations/phase-4-explanation.md).
+The standalone worker provides bounded cleanup and recovery. Redis now supports atomic rate
+limits and short-lived public event detail caching. PostgreSQL still owns every reservation,
+capacity, deadline, and idempotency decision; availability is never cached. React remains a
+health screen; booking/dashboard UI and production deployment remain future work. See
+[Phase 6 evidence](docs/phase-6-validation.md) and its
+[beginner explanation](docs/phase-explanations/phase-6-explanation.md).
 
 ## Repository structure
 
@@ -18,11 +20,11 @@ and [beginner explanation](docs/phase-explanations/phase-4-explanation.md).
 csrs/
   .github/                 # GitHub Actions and dependency update configuration
   backend/
-    src/csrs/              # App, models, auth/event/reservation services, CLI, API routes
+    src/csrs/              # App, SQL services, Redis support, worker, CLI, API routes
     migrations/            # Foundation schema and bounded-worker index revisions
-    scripts/               # Explicit health/full API contract exporter
+    scripts/               # Contract exporter and scoped live smoke checks
     tests/unit/            # Configuration, crypto, health, and contract checks
-    tests/integration/     # Real PostgreSQL auth, schema, migration, and race checks
+    tests/integration/     # Real PostgreSQL/Redis, schema, recovery, and process races
     pyproject.toml         # Direct dependency constraints and test/lint configuration
     requirements-dev.lock  # Resolved transitive development constraints
     Dockerfile
@@ -50,7 +52,8 @@ csrs/
 
 Prerequisites: Git, Docker Engine/Docker Desktop with Linux containers, and Docker Compose v2
 supporting `up --wait`. Docker must be running. Host Python and Node are optional for the
-container workflow. Reserve ports 5173, 8000, 5432, and 6379; test PostgreSQL uses 5433.
+container workflow. Reserve ports 5173, 8000, 5432, and 6379; test PostgreSQL uses 5433 and
+dedicated test Redis uses 6380. Ports bind to loopback.
 
 From the repository root, copy the example once (PowerShell):
 
@@ -80,8 +83,8 @@ Rebuild the backend image after Python dependency changes.
 
 The browser uses Vite's same-origin `/api` proxy. Use `localhost:5173` consistently with
 `CSRS_PUBLIC_ORIGIN`; do not switch to a different host alias when testing later CSRF behavior.
-Redis runs locally but is intentionally not queried by the application. Apply the
-migration before using authentication. Readiness still checks connectivity, not schema currency.
+Redis supports the quotas/cache documented below. Apply migrations before using authentication.
+Readiness still checks PostgreSQL connectivity, not schema currency or Redis health.
 Migrations are explicit administrative steps, never automatic per-API-process startup work.
 
 Stop services while preserving PostgreSQL data:
@@ -94,11 +97,11 @@ Do not add `--volumes` unless intentionally discarding local data. Changing init
 credentials does not change an already initialized PostgreSQL volume. See [infrastructure
 notes](infra/README.md).
 
-## Tests in Docker: isolated PostgreSQL
+## Tests in Docker: isolated PostgreSQL and Redis
 
 ```powershell
 docker compose --profile test run --build --rm backend-test
-docker compose --profile test stop postgres-test
+docker compose --profile test stop postgres-test redis-test
 ```
 
 The runner executes all Pytest tests. `csrs_test` on the separate `postgres-test` service is
@@ -108,6 +111,10 @@ The test role needs CREATEDB permission (the local/CI test role has it). The con
 database is not truncated/dropped, and tests never point at the development application database.
 No SQLite integration fallback exists. A configured but unreachable PostgreSQL server fails
 the integration tests; only an absent test URL produces an explicit local skip.
+Redis tests use a separate `redis-test` service, database 15, unique per-test namespaces,
+and scoped key cleanup. They never flush development Redis. CI requires both test URLs.
+Earlier transaction tests explicitly disable quotas/cache so throttling cannot hide booking
+races; Phase 6 cases enable them and exercise real Redis, including failure paths.
 
 ## Optional host development
 
@@ -119,7 +126,7 @@ docker compose up -d --wait postgres redis
 docker compose run --build --rm backend python -m alembic upgrade head
 python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -c backend/requirements-dev.lock -e './backend[dev]'
-.\.venv\Scripts\python.exe -m uvicorn csrs.main:create_app --factory --app-dir backend/src --env-file .env --reload --reload-dir backend/src
+.\.venv\Scripts\python.exe -m uvicorn csrs.main:create_app --factory --app-dir backend/src --env-file .env --reload --reload-dir backend/src --no-proxy-headers
 ```
 
 In another terminal at the repository root:
@@ -146,8 +153,9 @@ Backend checks from the repository root:
 Host PostgreSQL integration checks:
 
 ```powershell
-docker compose --profile test up -d --wait postgres-test
+docker compose --profile test up -d --wait postgres-test redis-test
 $env:CSRS_TEST_DATABASE_URL = 'postgresql+psycopg://csrs_test:csrs_test_local_only@localhost:5433/csrs_test'
+$env:CSRS_TEST_REDIS_URL = 'redis://localhost:6380/15'
 .\.venv\Scripts\python.exe -m pytest backend/tests/integration
 ```
 
@@ -208,8 +216,8 @@ docker compose exec -T backend python -m csrs.cli purge-sessions --batch-size 10
 Promotion revokes existing sessions; log in again. Cleanup deletes one bounded batch of
 expired/revoked security sessions; repeat as needed. Host CLI commands support `--env-file .env`
 before the subcommand. CLI access is administrative database access, not a public API.
-Redis rate limiting and automatic cleanup scheduling are deferred; see the security limitations
-in [Phase 2 verification](docs/phase-2-validation.md).
+Redis now limits new anonymous sessions and login/register attempts. Expired security-session
+cleanup remains a manual command; reservation expiration is independently scheduled by the worker.
 
 Python direct requirements are bounded in `pyproject.toml`; `requirements-dev.lock` constrains
 resolved development versions. Frontend dependencies use `npm ci` and the committed lockfile.
@@ -221,8 +229,9 @@ uses `httpx2`; it is a development dependency, not an application HTTP integrati
 GitHub Actions defines backend lint/format/unit/contract checks, required real PostgreSQL
 integration tests, a frontend build, Docker image builds, and a Compose health/proxy smoke check.
 The workflow also applies/checks development migrations and exercises migrations in isolated
-PostgreSQL tests. Phase 4 is committed with green CI. Phase 5 checks run locally before review;
-hosted CI for Phase 5 requires a later authorized commit/push. No deployment secret is required.
+PostgreSQL/Redis tests. Phases 1-5 are committed with green CI. Phase 6 adds real Redis tests
+and a Compose cache/outage/recovery smoke, including API/worker startup while Redis is stopped.
+Hosted Phase 6 CI requires a later approved commit/push. No deployment secret is required.
 
 `.env`, local environments, package caches, build output, and common key files are ignored.
 `.env.example` contains public local examples only. No production credentials are required.
@@ -230,7 +239,7 @@ Do not log settings dumps with revealed secret values or commit database backups
 
 Phase 4 includes reproducible PostgreSQL contention/failure tests with two independent API
 processes. These establish the tested correctness scenarios; they are not production load
-or latency/throughput measurements. Phase 4 is committed; Phase 5 changes remain uncommitted for review.
+or latency/throughput measurements. Phase 6 changes remain uncommitted for review.
 
 ## Reservation API and retry keys
 
@@ -256,7 +265,8 @@ Retain the **same key** after a lost response or uncertain 503/network outcome. 
 the original status/body and `Idempotency-Replayed: true`; new executions return false.
 Fetch the reservation after replay to see current state. Stored business conflicts replay too;
 a new intentional attempt uses a new key. Security/validation/transient database failures do
-not create completed outcomes. No background expiration worker or key-retention cleanup exists.
+not create completed outcomes. The background expiration worker is implemented; key-retention
+cleanup remains absent. Rate-limit responses likewise never become completed booking outcomes.
 
 Live Compose smoke with generated temporary accounts/event and scoped cleanup:
 
@@ -329,3 +339,84 @@ The local-only helper creates its own event/users, checks committed expiration/c
 and live API/proxy readiness plus availability, then removes only its generated records.
 See [Phase 5 validation](docs/phase-5-validation.md) and the
 [twelve-section explanation](docs/phase-explanations/phase-5-explanation.md) for evidence and limits.
+
+## Redis support (Phase 6, awaiting review)
+
+The API owns one lazy redis-py 8.1 connection pool. Startup/readiness and the worker do not
+require a live Redis server. DNS plus TCP connection waits and socket operations are bounded;
+there are no automatic command retries. Structured support logs contain operation names and
+sanitized error classes, never credentials, quota identities, or cached bodies.
+
+All quotas use one atomic Redis script with a window beginning at the first accepted request.
+Rejected requests do not extend the window. Exceeded quotas return 429 RATE_LIMITED with an
+integer Retry-After; no reservation claim/outcome is stored for a throttle response.
+
+| Scope | Default per 60-second window | Redis failure policy |
+| --- | --- | --- |
+| New anonymous CSRF/session creation | 30 per connection peer IP | 503 with Retry-After: 1; create no session |
+| Login and registration combined | 10 per connection peer IP | 503 with Retry-After: 1 |
+| Public event list/detail/availability combined | 120 per connection peer IP | Continue to PostgreSQL |
+| Reservation commands/replays and organizer mutations combined | 60 per authenticated user | Continue to PostgreSQL with all security/transaction checks |
+
+Valid existing CSRF-token retrieval, logout, health, current-user, private history/detail, and
+organizer reads are unthrottled. Source/JSON/input guards remain in force. Mutation quotas
+validate current session/CSRF/role before Redis, then the original service checks authorization
+again inside its transaction and after lock waits. Quotas do not authorize any mutation.
+
+The peer is the server connection address. Compose, the image default, and the host command
+disable Uvicorn proxy-header trust. Changing X-Forwarded-For cannot select a quota identity.
+Clients behind Vite/a shared proxy share its IP quota; trusted proxy deployment is Phase 8.
+
+Only GET /api/v1/events/{event_id} uses metadata caching. List pages and availability remain
+uncached PostgreSQL reads. A hit still checks publication visibility in PostgreSQL; an absent,
+draft, or closed event is 404 even if a stale cache entry exists. The payload contains only
+the existing public detail fields, wrapped as version 1. Cache-Control remains no-store.
+The default TTL is 15 seconds and hits do not extend it. Cache keys are
+`csrs:local:v1:event:UUID`; quotas use `csrs:local:v1:quota:SCOPE:SHA256(identity)`.
+Environment and configurable namespace isolate keys. Hashing IPs is not an anonymity guarantee.
+
+Successful edit/capacity/publish/close invalidates after SQL commit. Failed invalidation and
+an older read filling after invalidation can leave public metadata stale. Each fill expires
+at the original Redis lookup time plus TTL using PXAT; a delayed fill cannot start a new TTL.
+Publication visibility is checked afresh, and live capacity/admission/expiration/idempotency
+always use PostgreSQL. No reservation transition invalidates metadata because it contains no
+occupancy. Malformed/wrong-version/oversized cache values fall back to PostgreSQL. Existing
+SQL detail outside cache limits is returned without filling the cache.
+
+| Setting | Default / bounds |
+| --- | --- |
+| CSRS_REDIS_NAMESPACE | csrs; 1-64 letters, digits, underscore or hyphen |
+| CSRS_REDIS_CONNECT_TIMEOUT_SECONDS | 0.2; 0.05-2 seconds, shared DNS/TCP budget |
+| CSRS_REDIS_SOCKET_TIMEOUT_SECONDS | 0.2; 0.05-2 seconds per socket operation |
+| CSRS_REDIS_MAX_CONNECTIONS | 10 per API process; 1-40; pool exhaustion uses the same failure policy |
+| CSRS_METADATA_CACHE_ENABLED | true; false bypasses server metadata caching |
+| CSRS_METADATA_CACHE_TTL_SECONDS | 15; 1-60 seconds |
+| CSRS_RATE_LIMITS_ENABLED | true; false explicitly disables quotas (isolated transaction tests/development) |
+| CSRS_RATE_LIMIT_WINDOW_SECONDS | 60; 1-3600 seconds |
+| CSRS_RATE_LIMIT_BOOTSTRAP / AUTH / PUBLIC / MUTATION | 30 / 10 / 120 / 60; each 1-10000 |
+
+Connection URLs accept redis:// or rediss:// and a numeric database path; query parameters
+are rejected so they cannot override timeout/TLS settings. Redis uses a 64 MiB development
+memory budget, noeviction, and no persistence. OOM/errors use the documented failure policy;
+restart resets quotas/cache. Short TTLs bound key lifetimes. Cache values are at most 64 KiB.
+This is application throttling, not a production DDoS defense or throughput/latency SLA.
+Cache hits avoid loading the full description but still query visibility; extra Redis calls
+can cost more than a small uncached SQL read. No measured speedup is claimed.
+
+Live verification with the opt-in worker running (local data only; preserve volumes):
+
+```powershell
+docker compose --profile worker up -d worker
+docker compose exec -T backend python scripts/smoke_redis.py available
+docker compose stop redis
+docker compose --profile worker restart worker
+docker compose up -d --no-deps --force-recreate --wait --wait-timeout 60 backend
+docker compose exec -T backend python scripts/smoke_redis.py outage
+docker compose up -d --wait --wait-timeout 60 redis
+docker compose exec -T backend python scripts/smoke_redis.py recovered
+```
+
+The helper generates scoped temporary users/sessions/event/reservations, verifies live
+cache/quotas, mutation replay, worker expiration and SQL invariants, and restores table counts.
+Restore Redis even if an outage check fails. See [Phase 6 validation](docs/phase-6-validation.md)
+for exact evidence, audit fixes, failure policies, and remaining limits. Phase 7 has not started.

@@ -9,10 +9,12 @@ local administration commands. Phase 3 adds public event discovery and owner-onl
 create/read/edit/capacity/publish/close operations with event-row locks. Phase 4 adds holds,
 confirmation/cancellation, request-time expiration, durable idempotency, owner history/detail,
 and public advisory availability. Phase 5 adds the standalone expiration worker, bounded
-index-backed cleanup, and recovery tests; it is implemented locally and awaiting review. Redis
-limiting/caching, organizer dashboard, business UI, and deployment remain **future work**.
+index-backed cleanup, and recovery tests; Phases 1-5 are committed. Phase 6 adds Redis quotas
+and public event detail caching locally, awaiting review. Organizer dashboard, business UI,
+and deployment remain **future work**.
 See [Phase 4 validation](phase-4-validation.md) and [Phase 5 validation](phase-5-validation.md)
-for actual PostgreSQL correctness evidence and each phase's review status.
+for historical PostgreSQL evidence; [Phase 6 validation](phase-6-validation.md) records Redis
+integration, its failure policies, and current review status. The handoff remains at Phase 5.
 
 ## Modular monolith
 
@@ -27,9 +29,11 @@ PostgreSQL owns durable users, sessions, events, reservations, capacity, and ide
 Alembic owns schema evolution. Each request/worker transaction gets an independent session;
 sessions are never shared across threads or requests. No generic repository framework is needed.
 
-Redis will handle rate limits and short-lived public event metadata only. Its contents never
-authorize allocations or decide confirmation validity. It is running in Compose in Phase 1,
-but there is no Redis client or cache implementation yet.
+Redis now handles atomic rate limits and short-lived public event detail metadata only.
+Its contents never authorize allocation, decide confirmation validity, or store durable
+idempotency. A synchronous RedisSupport adapter owns one lazy redis-py pool per API process.
+Business services retain PostgreSQL transactions; route adapters invoke Redis before business
+transactions or after a successful commit. No Redis call occurs under the event lock.
 
 The standalone expiration process uses the same backend image and shared transition as the API.
 Run `python -m csrs.worker` or the opt-in Compose worker service. It discovers overdue work
@@ -47,6 +51,10 @@ API scheduler is required. Multiple API processes must remain correct without Py
 - Connection establishment, pool checkout, and SQL statement execution have bounded timeouts.
   These are individual bounds, not a promised total request-latency SLA.
 - Readiness does not assert schema currency, Redis availability, or worker progress.
+- Redis DNS/TCP connection time and socket operations have finite bounds, with no automatic
+  command retry. One shared pending daemon DNS lookup prevents unbounded blocked lookup work;
+  shutdown closes the pool/resolver without waiting on OS DNS. Startup performs no Redis ping.
+  Optional cache/quota errors fall through to PostgreSQL; new-session/auth quotas fail closed.
 
 ## Configuration
 
@@ -67,7 +75,7 @@ must never contain secrets; API requests use relative same-origin URLs.
 ## Development and future hosting
 
 Compose runs PostgreSQL 17 with a persistent volume, ephemeral Redis 7.4, FastAPI, and Vite.
-The opt-in test profile has a separate disposable PostgreSQL instance and backend test runner.
+The opt-in test profile has separate disposable PostgreSQL/Redis instances and a test runner.
 Host ports bind to `127.0.0.1`. Production containers, provisioning, and credentials are out of
 scope.
 
@@ -113,13 +121,13 @@ flowchart TB
         Cleanup --> Orm
     end
     Pg[("PostgreSQL: durable source of truth")]
-    Redis[("Redis: running, unused<br/>Phase 6 integration planned")]
-    Worker["Standalone sweeper<br/>Phase 5 implemented, awaiting review"]
+    Redis[("Redis: quotas + public detail metadata<br/>Ephemeral supporting data only")]
+    Worker["Standalone PostgreSQL sweeper<br/>No Redis client or HTTP dependency"]
     Web -->|"Vite /api health proxy"| Api
     Client -->|"JSON, cookie, Origin, CSRF, retry key"| Api
     Web -.->|"Phase 7 business screens"| Api
     Orm --> Pg
-    Api -.-> Redis
+    Api -->|"Quotas/cache; invalidation after commit"| Redis
     Worker --> Cleanup
 ```
 
@@ -165,7 +173,8 @@ PUBLISHED events, with one SQL snapshot and one database time sample, and remain
 
 ## Concurrency-safe reservation workflow
 
-This sequence is implemented in Phase 4. Rate limiting before the transaction remains Phase 6.
+The business sequence is implemented in Phase 4. Phase 6 applies quotas before this transaction;
+Redis failure permits authenticated booking commands to continue, preserving this protocol.
 For confirm/cancel, the service first discovers the immutable event ID with an unlocked,
 owner-scoped reservation read. No reservation lock precedes the event lock.
 
@@ -177,6 +186,8 @@ sequenceDiagram
     participant Db as PostgreSQL
     Client->>Api: POST command, JSON {}, cookie, Origin, CSRF, Idempotency-Key
     Api->>Api: Validate source, media type, body, UUID, exactly one valid key
+    Api->>Db: Short session/CSRF/role preflight, close read transaction
+    Note over Api,Db: User quota outside transaction, service reauthorizes afterward
     Api->>Service: Validated command
     Service->>Db: BEGIN READ COMMITTED, validate session, active user, CSRF, access
     Service->>Db: INSERT key claim ON CONFLICT DO NOTHING
@@ -269,3 +280,29 @@ rows again. Recoverable database errors roll back, emit sanitized JSON, and retr
 exponential backoff. Failures within a cached page are paced too, allowing later candidates to
 progress without a tight reconnect loop. Unexpected errors terminate with a sanitized failure
 record; Compose restart policy is unless-stopped. Startup never runs migrations automatically.
+
+## Phase 6 Redis boundaries and failure policies
+
+Rate-limit keys have a namespace/environment/version, scope, and SHA-256 identity digest.
+One Lua operation checks/increments the quota and sets its fixed-window expiry atomically.
+Default windows are 60 seconds: 30 new anonymous sessions per peer, 10 login/register attempts
+combined per peer, 120 public event reads per peer, and 60 booking/organizer mutations per user.
+429 includes Retry-After and never creates a completed booking outcome. A failed limiter
+returns 503 for new anonymous sessions/login/register; public reads and authenticated mutations
+continue through PostgreSQL. Existing valid token retrieval and logout remain available.
+Proxy headers are disabled in local server commands; peers behind Vite share an IP quota.
+
+Only public event detail is cached, for 15 seconds by default. Every hit first checks current
+PUBLISHED visibility with a PostgreSQL ID-only query. Misses load the ordinary public DTO;
+private data, availability, lists, reservations, and idempotency are never cached. Redis errors
+or malformed/oversized/version-mismatched values use PostgreSQL. A PostgreSQL error still
+returns its controlled failure, even if Redis holds a value.
+
+Edit/capacity/publish/close transport handlers invalidate after commit. A missed invalidation
+or older read filling after it can leave public metadata stale, including its displayed
+capacity. Redis TIME at miss plus TTL gives the absolute PXAT deadline: hits/slow fills cannot
+renew old data indefinitely. The fresh publication gate prevents a cached draft/closed event
+from becoming public. Admission and advisory availability retain their PostgreSQL rules.
+Cache hits avoid loading the full description but still query visibility; no latency speedup
+or production SLA is claimed. See [README configuration](../README.md#redis-support-phase-6-awaiting-review)
+and [Phase 6 validation](phase-6-validation.md) for keys, limits, tests, and recovery evidence.

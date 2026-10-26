@@ -43,8 +43,10 @@ account. Registration also changes server state and uses the same protection.
 
 Bootstrap is the sole GET that may create security-session state; it does not mutate domain
 data. Its response must never be cached. Same-origin response access and no permissive CORS
-prevent another site reading the token. Rate-limit anonymous bootstrap/session creation in
-the Redis integration phase and expire old pre-sessions; do not permit unlimited durable rows.
+prevent another site reading the token. Phase 6 atomically rate-limits new anonymous sessions
+and login/register attempts per connection peer. If Redis is unavailable, those operations
+return controlled 503 without creating sessions/users. Existing valid token retrieval does
+not create a row and remains available. Expired security-session purge remains a manual command.
 
 ## Authenticated mutations
 
@@ -70,6 +72,8 @@ login bodies. Do not enable wildcard/reflective credentialed CORS. Development V
 the API while preserving Origin; localhost:5173 is the configured browser origin. Accessing
 the UI through 127.0.0.1 instead requires an intentional matching configuration change.
 Trust proxy headers only from explicitly configured infrastructure in a later deployment.
+Current Compose/image/host commands disable Uvicorn proxy-header trust. Rate limits use the
+connection peer, never client-supplied forwarded headers; Vite/shared proxies share an IP quota.
 
 SameSite and JSON/custom headers provide defense in depth. They do not replace synchronizer
 token and origin validation. XSS can bypass CSRF defenses; avoid unsafe HTML rendering and
@@ -106,6 +110,11 @@ Duplicate registration returns generic 409 REGISTRATION_UNAVAILABLE; the status 
 that an address cannot be registered. Request validation responses retain 422 detail/type/loc/msg
 but remove input/ctx so passwords, CSRF values, and complete request bodies are not echoed.
 All auth responses, including errors, are no-store. Duplicate/untrusted Origin headers are rejected.
+Redis stores no cookie secrets, CSRF tokens, passwords, private reservations, or durable
+idempotency. User mutation quotas use a hashed user-ID identity; anonymous/public quotas hash
+the peer IP. These digests are pseudonymous, not an anonymity guarantee. Logs omit identities,
+payloads, settings, URLs and exception strings. Public cache hits require fresh SQL publication
+visibility, and cache payload validation forbids private extra fields.
 
 Local administrators can run `python -m csrs.cli promote-organizer EMAIL` for an existing
 active user. It revokes that user's existing sessions; the user logs in again. This command
@@ -113,8 +122,8 @@ requires database access and is never exposed as an HTTP role-selection endpoint
 `python -m csrs.cli purge-sessions --batch-size 1000` deletes one bounded batch of expired
 or revoked security sessions, skipping rows locked by other transactions. Repeat as needed.
 
-Rate limiting and automatic maintenance scheduling remain deferred; run bounded session
-cleanup manually in this phase. No email verification, password recovery, MFA, or auth UI
+Phase 6 adds rate limiting; automatic security-session maintenance remains deferred. Run
+bounded session cleanup manually. No email verification, password recovery, MFA, or auth UI
 is implemented. Cookie/CSRF protection does not substitute for those later product controls.
 Phase 3 event mutation handlers combine the HTTP origin/JSON guard with session/CSRF validation
 inside their service transaction and recheck after an event lock wait. Phase 4 reservation

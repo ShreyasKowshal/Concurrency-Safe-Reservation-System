@@ -17,4 +17,4 @@ RUN pip install --no-cache-dir -c requirements-dev.lock ".[dev]" \
 ENV PYTHONPATH=/workspace/backend/src
 USER app
 EXPOSE 8000
-CMD ["uvicorn", "csrs.main:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "csrs.main:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000", "--no-proxy-headers"]

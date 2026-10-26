@@ -84,6 +84,8 @@ def postgres_settings(migrated_engine) -> Settings:
         environment="test",
         database_url=migrated_engine.url.render_as_string(hide_password=False),
         redis_url="redis://localhost:6379/0",
+        rate_limits_enabled=False,
+        metadata_cache_enabled=False,
     )
 
 

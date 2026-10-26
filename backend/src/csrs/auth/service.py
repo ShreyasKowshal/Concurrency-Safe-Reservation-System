@@ -91,7 +91,9 @@ def issue_session(db: Session, settings: Settings, user: User | None = None) -> 
     )
 
 
-def bootstrap(db: Session, settings: Settings, cookie: str | None) -> SessionReply:
+def bootstrap(
+    db: Session, settings: Settings, cookie: str | None, *, create: bool = True
+) -> SessionReply | None:
     with db.begin():
         record = find_session(db, cookie, lock=True)
         if record is not None:
@@ -99,6 +101,10 @@ def bootstrap(db: Session, settings: Settings, cookie: str | None) -> SessionRep
             if record.kind == SessionKind.ANONYMOUS or (user is not None and user.is_active):
                 # Do not extend database or cookie expiry when retrieving an existing token.
                 return SessionReply(cookie="", csrf_token=record.csrf_token, max_age=0)
+        if not create:
+            # Read an existing token during a Redis outage without creating durable rows.
+            return None
+        if record is not None:
             record.revoked_at = database_time(db)
         reply = issue_session(db, settings)
     return reply

@@ -25,6 +25,9 @@
 | ADR-021 | Phase 3 capacity uses stored allocation conservatively | Preserve bounds without implementing Phase 4 expiration; later shared cleanup must run under the same event lock |
 | ADR-022 | Bounded keyset discovery plus event-row SKIP LOCKED in Phase 5 | No reservation-first locks; fixed-cutoff passes advance past busy groups and restart safely from PostgreSQL |
 | ADR-023 | Optional bounded shared expiration and an event-first partial index | Keep API cleanup behavior while bounding worker row updates for large events; adds one maintained index and migration |
+| ADR-024 | Atomic Redis fixed-window quotas outside business transactions | Shared multi-process quotas; new anonymous sessions/auth fail closed on outage, authenticated mutations/public reads continue safely through PostgreSQL; 429 is never a durable booking outcome |
+| ADR-025 | Cache public event detail only, with a fresh SQL visibility gate and absolute TTL | Avoid private/list/availability caching; successful event writes invalidate after commit, older fills remain bounded by the original miss deadline; a hit still costs an ID-only SQL query |
+| ADR-026 | Bound Redis DNS/TCP and socket waits with no automatic retries | Real stopped-service testing exposed DNS outside socket timeout; one shared pending daemon lookup bounds caller waits and blocked work, while TLS retains hostname verification |
 
 Scope gates and acceptance criteria are in [phases](phases.md). Decisions are reviewed when
 requirements change, not silently bypassed by a new endpoint or worker.

@@ -11,7 +11,7 @@ These health endpoints remain unchanged. Machine-readable specification:
 | GET /api/v1/health/ready | 200: `{"status":"ready","dependencies":{"postgresql":"up"}}` | 503: `{"status":"not_ready","dependencies":{"postgresql":"down"}}` |
 
 Both send `Cache-Control: no-store`. Readiness checks connectivity and a trivial SQL query,
-not migrations/schema, Redis, or future worker availability. No authentication is required.
+not migrations/schema, Redis, or worker progress. No authentication is required.
 
 ## Implemented authentication, events, and reservations
 
@@ -156,7 +156,8 @@ between requests can change membership/order. A refresh restarts the listing.
 Every existing-event mutation locks its owned event with `SELECT ... FOR UPDATE`, then
 rechecks session expiry/revocation, current active user/role, ownership, and state. All successful
 writes commit before responding. Read endpoints reuse the current-user/organizer dependencies.
-All event responses currently use no-store, including public responses; Redis is not involved.
+All event responses use no-store, including public responses. Phase 6 adds server-side public
+detail caching as described below; this does not enable browser caching.
 Validation errors omit submitted values. Event 422 responses can be sanitized `detail` errors
 or the controlled INVALID_EVENT_SCHEDULE/INVALID_CURSOR envelope; OpenAPI describes both.
 
@@ -179,7 +180,7 @@ CSRF bootstrap returns only csrf_token, with a cookie when a new pre-session is 
 Auth errors: 401 AUTHENTICATION_REQUIRED or INVALID_CREDENTIALS; 403 CSRF_FAILED/FORBIDDEN;
 409 REGISTRATION_UNAVAILABLE; 415 UNSUPPORTED_MEDIA_TYPE; 503 TEMPORARILY_UNAVAILABLE.
 There is no public organizer-provisioning endpoint. Roles can be exercised through reusable
-dependencies and local promotion, not through unfinished organizer/event routes.
+dependencies and local promotion; there is no public role-selection route.
 
 ## Phase 4 implementation details
 
@@ -199,3 +200,30 @@ bounded and scoped to the authenticated user. Reservation/availability timestamp
 to UTC. GETs perform no reservation writes; effective EXPIRED can have null expired_at until
 cleanup. Availability filters PUBLISHED events and uses one PostgreSQL statement/snapshot with
 a single database time sample, valid HELD plus CONFIRMED rows, and no cache.
+
+## Phase 6 quotas and public metadata consistency
+
+Payload shapes and API version 0.4.0 remain unchanged. Limited endpoints additionally return
+429 RATE_LIMITED with integer Retry-After and the existing error envelope. Defaults use
+60-second windows anchored at the first accepted request: new anonymous sessions 30/peer,
+login/register combined 10/peer, public event list/detail/availability combined 120/peer,
+and all booking commands/replays plus organizer mutations combined 60/authenticated user.
+Forwarded headers do not select the peer; current server commands disable proxy-header trust.
+Valid existing CSRF-token retrieval, logout, health, and private reads are unthrottled.
+
+If Redis is unavailable, new-session creation/login/register return sanitized 503
+TEMPORARILY_UNAVAILABLE with Retry-After: 1. Public reads and authenticated mutations continue
+through PostgreSQL. All session/CSRF/role/ownership and post-wait rechecks remain mandatory.
+Neither 429 nor limiter/database transient errors complete an idempotency outcome; retry the
+same key for uncertain commands. PostgreSQL failures keep their existing controlled error.
+
+Only GET /events/{event_id} has a server metadata cache. Its existing public detail fields,
+including displayed capacity, can be stale for the configured TTL (default 15, maximum 60
+seconds from the original Redis miss). A cache hit still requires a fresh SQL PUBLISHED
+visibility check; a request after close commits receives 404 even if invalidation failed.
+Concurrent reads can observe visibility before a concurrent close, as ordinary SQL reads do.
+Edit/capacity/publish/close invalidate after commit. Older fills after invalidation retain
+their original absolute expiry, and hits never extend it. Malformed/oversized/incompatible
+cache data falls back to PostgreSQL. Redis does not contain private organizer/reservation data.
+Lists and availability are uncached; availability remains the one-query advisory snapshot,
+and every allocation/confirmation/expiration decision still uses the locked SQL transaction.

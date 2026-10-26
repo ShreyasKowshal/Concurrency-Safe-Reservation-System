@@ -2,8 +2,9 @@
 
 **Implemented through Phase 4:** event-row locking, reservation commands, durable idempotency,
 and request-time expiration. Capacity edits and reservation commands share due-hold cleanup
-under the event lock. The standalone worker is implemented in Phase 5 and awaits review;
-see [its validation](phase-5-validation.md).
+under the event lock. The standalone worker is completed in Phase 5; see
+[its validation](phase-5-validation.md). Phase 6 Redis support is implemented locally and
+awaits review; it does not change this reservation protocol.
 
 ## Product rules
 
@@ -115,6 +116,18 @@ Connection loss during commit has an uncertain outcome. Retry with the same key.
 create a fresh key automatically for an uncertain mutation. Transient database errors and
 429s are not completed reservation outcomes. Apply bounded retries only to known safe
 transaction-abort cases; lock timeout returns retryable 503 after rollback.
+
+Phase 6 quotas execute outside the business transaction. Authenticated mutation preflight
+checks session/CSRF/role in a short transaction, ends it, then uses Redis. The command service
+still authorizes afresh inside its transaction and after waits. A Redis outage, timeout,
+pool exhaustion, or memory error lets these commands continue to PostgreSQL; an actual quota
+excess returns 429 before any claim. Authentication/CSRF/ownership and durable replay remain
+mandatory. New anonymous sessions/login/register fail closed when their limiter is unavailable.
+
+The public metadata cache stores no live occupancy or availability. An old displayed metadata
+capacity cannot admit a hold; the locked PostgreSQL value decides. Metadata invalidation is
+after commit and best effort, with absolute TTL-bounded stale fills. The independent worker
+has no Redis connection and requires no cache invalidation for occupancy transitions.
 
 ## Required race/failure coverage
 
