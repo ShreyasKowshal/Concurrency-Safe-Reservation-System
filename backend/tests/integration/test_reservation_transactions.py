@@ -131,7 +131,7 @@ def test_final_seats_across_two_api_processes(
     assert (
         sum(status == 409 and body["error"]["code"] == "EVENT_FULL" for status, body, _ in replies)
         == attempts - capacity
-    )
+    ), [(status, body) for status, body, _ in replies if status not in {201, 409}]
     with Session(clean_engine) as db:
         assert db.get(Event, booking["event"].id).allocated_seats == capacity
         assert db.scalar(select(func.count()).select_from(IdempotencyRecord)) == attempts

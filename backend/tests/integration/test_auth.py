@@ -1,4 +1,5 @@
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import ExitStack
 from datetime import timedelta
 from threading import Barrier
 
@@ -298,18 +299,23 @@ def test_concurrent_login_consumes_pre_session_once(client, client_factory, user
     cookie = client.cookies["csrs_session"]
     barrier = Barrier(2)
 
-    def attempt():
-        with client_factory() as contender:
-            contender.cookies.set("csrs_session", cookie)
-            barrier.wait(timeout=10)
-            return contender.post(
-                "/api/v1/auth/login",
-                json={"email": "attendee@example.com", "password": PASSWORD},
-                headers=headers,
-            ).status_code
+    def attempt(contender):
+        barrier.wait(timeout=10)
+        return contender.post(
+            "/api/v1/auth/login",
+            json={"email": "attendee@example.com", "password": PASSWORD},
+            headers=headers,
+        ).status_code
 
-    with ThreadPoolExecutor(max_workers=2) as pool:
-        statuses = list(pool.map(lambda _: attempt(), range(2)))
+    with ExitStack() as clients:
+        contenders = [clients.enter_context(client_factory()) for _ in range(2)]
+        for contender in contenders:
+            contender.cookies.set("csrs_session", cookie)
+            # Build lazy route metadata before the database concurrency barrier.
+            # Invalid input leaves the shared pre-session available to both contenders.
+            assert contender.post("/api/v1/auth/login", headers=headers, json={}).status_code == 422
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            statuses = list(pool.map(attempt, contenders))
     assert sorted(statuses) == [200, 403]
     with db.begin():
         assert (

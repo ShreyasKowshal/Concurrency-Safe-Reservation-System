@@ -169,6 +169,13 @@ class Reservation(Identity, Updated, Base):
         Index("ix_reservations_user_history", "user_id", "created_at", "id"),
         Index("ix_reservations_event_status", "event_id", "status"),
         Index(
+            "ix_reservations_event_held_expiry",
+            "event_id",
+            "hold_expires_at",
+            "id",
+            postgresql_where=text("status = 'HELD'"),
+        ),
+        Index(
             "ix_reservations_held_expiry",
             "hold_expires_at",
             "event_id",

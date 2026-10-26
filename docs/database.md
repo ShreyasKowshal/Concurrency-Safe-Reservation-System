@@ -99,3 +99,14 @@ on the dedicated test server and removed after the run; the configured input dat
 not truncated or dropped.
 
 Reference: [PostgreSQL constraints](https://www.postgresql.org/docs/current/ddl-constraints.html).
+
+## Phase 5 bounded worker index
+
+Revision `0002_worker_expiry` adds only
+`ix_reservations_event_held_expiry (event_id,hold_expires_at,id) WHERE status='HELD'`.
+The existing `(hold_expires_at,event_id)` partial index serves bounded global discovery.
+The new index serves ordered, limited cleanup for one locked event, avoiding sorting all of a
+large event's active rows or walking unrelated events' due entries. No columns, tables, data,
+or constraints change. Upgrade/downgrade and metadata drift are tested on disposable databases.
+Migration is an explicit administrator step before starting the worker. Its CREATE INDEX is
+transactional, with ordinary PostgreSQL index-build locking; it is not an online deployment.

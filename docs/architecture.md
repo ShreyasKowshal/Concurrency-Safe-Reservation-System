@@ -8,9 +8,11 @@ migration, backend authentication, CSRF enforcement, reusable authorization guar
 local administration commands. Phase 3 adds public event discovery and owner-only event
 create/read/edit/capacity/publish/close operations with event-row locks. Phase 4 adds holds,
 confirmation/cancellation, request-time expiration, durable idempotency, owner history/detail,
-and public advisory availability. Redis limiting/caching, organizer dashboard, business UI,
-and the standalone expiration worker remain **future work**.
-See [Phase 4 validation](phase-4-validation.md) for the actual PostgreSQL correctness evidence.
+and public advisory availability. Phase 5 adds the standalone expiration worker, bounded
+index-backed cleanup, and recovery tests; it is implemented locally and awaiting review. Redis
+limiting/caching, organizer dashboard, business UI, and deployment remain **future work**.
+See [Phase 4 validation](phase-4-validation.md) and [Phase 5 validation](phase-5-validation.md)
+for actual PostgreSQL correctness evidence and each phase's review status.
 
 ## Modular monolith
 
@@ -29,8 +31,9 @@ Redis will handle rate limits and short-lived public event metadata only. Its co
 authorize allocations or decide confirmation validity. It is running in Compose in Phase 1,
 but there is no Redis client or cache implementation yet.
 
-A future standalone expiration process uses the same image and reservation service as the API.
-It discovers overdue work in PostgreSQL. No Celery, broker, per-reservation timer, or in-process
+The standalone expiration process uses the same backend image and shared transition as the API.
+Run `python -m csrs.worker` or the opt-in Compose worker service. It discovers overdue work
+in PostgreSQL. No Celery, broker, per-reservation timer, or in-process
 API scheduler is required. Multiple API processes must remain correct without Python mutexes.
 
 ## Health and resource lifecycle
@@ -43,7 +46,7 @@ API scheduler is required. Multiple API processes must remain correct without Py
   disposes the pool. A database outage therefore does not prevent the process from starting.
 - Connection establishment, pool checkout, and SQL statement execution have bounded timeouts.
   These are individual bounds, not a promised total request-latency SLA.
-- Readiness does not assert schema currency, Redis availability, or future worker health.
+- Readiness does not assert schema currency, Redis availability, or worker progress.
 
 ## Configuration
 
@@ -111,18 +114,19 @@ flowchart TB
     end
     Pg[("PostgreSQL: durable source of truth")]
     Redis[("Redis: running, unused<br/>Phase 6 integration planned")]
-    Worker["Standalone sweeper<br/>Phase 5 planned"]
+    Worker["Standalone sweeper<br/>Phase 5 implemented, awaiting review"]
     Web -->|"Vite /api health proxy"| Api
     Client -->|"JSON, cookie, Origin, CSRF, retry key"| Api
     Web -.->|"Phase 7 business screens"| Api
     Orm --> Pg
     Api -.-> Redis
-    Worker -.-> Cleanup
+    Worker --> Cleanup
 ```
 
-Redis never decides capacity. The future worker must lock the event before calling the shared
-cleanup; the helper neither claims a key nor commits. Request-time cleanup already works when
-no worker runs. The current schema has five tables and no new Phase 4 migration.
+Redis never decides capacity. The worker locks each event before calling shared cleanup; the
+helper neither claims a key nor commits. Request-time cleanup still works when no worker runs.
+The five-table schema is unchanged; Phase 5 adds the partial event/expiry/ID index in revision
+`0002_worker_expiry` to bound cleanup work within a large event.
 
 ## Application workflow diagram
 
@@ -223,3 +227,45 @@ rolled-back claim is reusable. Records are retained in this MVP. A response lost
 or connection lost during commit requires the **same key**; no automatic server retry or new
 key is generated. 503 transient failures are not stored. Replayed responses can be stale;
 clients fetch the current reservation afterward.
+
+## Phase 5 worker and recovery
+
+The independent worker has no HTTP listener, user session, CSRF, retry key, or Redis call.
+It discovers at most CSRS_WORKER_BATCH_SIZE due reservation index entries per cycle without
+locking reservations, deduplicates their event IDs, then opens one transaction per event.
+It selects that event FOR UPDATE SKIP LOCKED with refreshed state and samples clock_timestamp
+only after locking. Shared cleanup expires at most the configured batch size for that event.
+Reservation updates and counter decrement commit atomically. APIs keep their existing cleanup
+behavior and response contracts; the worker's row limit is optional on the shared helper.
+
+```mermaid
+flowchart TD
+    Scan["Bounded due-hold index page<br/>No reservation locks"]
+    Lock["One event transaction<br/>FOR UPDATE SKIP LOCKED"]
+    Busy["Busy event: defer until next pass"]
+    Clock["Fresh state and post-lock database clock"]
+    Cleanup["Shared bounded HELD to EXPIRED transition"]
+    Commit["Commit rows and counter together"]
+    Wait["Interruptible idle poll, catch-up, or error backoff"]
+    Scan --> Lock
+    Lock -->|"Busy or missing"| Busy --> Wait
+    Lock -->|"Acquired"| Clock --> Cleanup --> Commit --> Wait
+    Wait --> Scan
+```
+
+Discovery orders (hold_expires_at,event_id) using the existing partial due-hold index. A fixed
+cutoff bounds a pass while new holds become due; a keyset position advances past busy groups
+and wraps when the pass ends. Equal-deadline rows from the same event may be skipped within a
+pass, because that event is already a candidate; later passes reclaim remaining bounded chunks.
+This prevents one busy oldest event from blocking discovery of later events. The position is
+navigation only: restarting from the oldest work is safe, and PostgreSQL retains all unfinished
+work. Cleanup orders (hold_expires_at,id) under the event lock using the new event-first partial
+index. Static HELD predicates keep these partial indexes eligible for generic prepared plans.
+
+SIGTERM/SIGINT interrupt idle/backoff waits and request stop between event transactions. An
+active transaction finishes before clean exit; forced termination rolls it back. Restart
+rediscovers committed HELD rows. Duplicate/stale processing cannot release terminal or confirmed
+rows again. Recoverable database errors roll back, emit sanitized JSON, and retry with capped
+exponential backoff. Failures within a cached page are paced too, allowing later candidates to
+progress without a tight reconnect loop. Unexpected errors terminate with a sanitized failure
+record; Compose restart policy is unless-stopped. Startup never runs migrations automatically.

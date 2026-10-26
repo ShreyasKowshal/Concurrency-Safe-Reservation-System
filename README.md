@@ -3,12 +3,13 @@
 A full-stack event/workshop reservation project focused on PostgreSQL transactions,
 concurrent capacity allocation, idempotency, and failure recovery.
 
-**Current implementation: Phase 4, locally verified and awaiting review.** The API provides
+**Current implementation: Phase 5 implemented locally and awaiting review.** The API provides
 health checks, session authentication/CSRF, event management, one-seat holds, confirmation,
 cancellation, request-time expiration, durable idempotency, private history, and advisory
-availability. Five PostgreSQL tables use the existing `0001_foundation` migration. React remains
-a health screen. The expiration worker, Redis limiting/caching, booking/dashboard UI, and
-production deployment remain future work. See the [Phase 4 evidence](docs/phase-4-validation.md)
+availability. Five PostgreSQL tables use the foundation schema plus the Phase 5 index migration.
+React remains
+a health screen. The standalone worker adds bounded cleanup and recovery. Redis limiting/caching, booking/dashboard
+UI, and production deployment remain future work. See the [Phase 4 evidence](docs/phase-4-validation.md)
 and [beginner explanation](docs/phase-explanations/phase-4-explanation.md).
 
 ## Repository structure
@@ -18,7 +19,7 @@ csrs/
   .github/                 # GitHub Actions and dependency update configuration
   backend/
     src/csrs/              # App, models, auth/event/reservation services, CLI, API routes
-    migrations/            # Alembic runner and 0001_foundation revision
+    migrations/            # Foundation schema and bounded-worker index revisions
     scripts/               # Explicit health/full API contract exporter
     tests/unit/            # Configuration, crypto, health, and contract checks
     tests/integration/     # Real PostgreSQL auth, schema, migration, and race checks
@@ -184,7 +185,7 @@ To intentionally refresh the health and complete implemented OpenAPI after revie
 ```
 
 Tests detect differences between the checked-in specifications and runtime schema.
-Alembic `heads` should show `0001_foundation`; `current` and `check` verify the target database
+Alembic `heads` should show `0002_worker_expiry`; `current` and `check` verify the target database
 has been migrated and matches model metadata. Downgrade is destructive and is exercised only
 on disposable test databases. Never downgrade development data to test a migration.
 
@@ -220,8 +221,8 @@ uses `httpx2`; it is a development dependency, not an application HTTP integrati
 GitHub Actions defines backend lint/format/unit/contract checks, required real PostgreSQL
 integration tests, a frontend build, Docker image builds, and a Compose health/proxy smoke check.
 The workflow also applies/checks development migrations and exercises migrations in isolated
-PostgreSQL tests. Phase 4 checks run locally before review; hosted CI for Phase 4 requires a
-later authorized commit/push. No deployment secret is required for these checks.
+PostgreSQL tests. Phase 4 is committed with green CI. Phase 5 checks run locally before review;
+hosted CI for Phase 5 requires a later authorized commit/push. No deployment secret is required.
 
 `.env`, local environments, package caches, build output, and common key files are ignored.
 `.env.example` contains public local examples only. No production credentials are required.
@@ -229,7 +230,7 @@ Do not log settings dumps with revealed secret values or commit database backups
 
 Phase 4 includes reproducible PostgreSQL contention/failure tests with two independent API
 processes. These establish the tested correctness scenarios; they are not production load
-or latency/throughput measurements. No Phase 4 commit or push has been authorized.
+or latency/throughput measurements. Phase 4 is committed; Phase 5 changes remain uncommitted for review.
 
 ## Reservation API and retry keys
 
@@ -265,3 +266,66 @@ docker compose exec -T backend python scripts/smoke_reservations.py
 
 The helper is for the local environment and requires running backend, frontend proxy, and
 migrations. It prints only status labels and restores the original application table counts.
+
+## Expiration worker (Phase 5)
+
+The independently runnable worker uses PostgreSQL and the shared event-lock protocol. It has
+no HTTP listener and does not connect to Redis. The API contract/version remains 0.4.0.
+The new partial index is installed by revision `0002_worker_expiry`; migrate before starting:
+
+```powershell
+docker compose exec -T backend python -m alembic upgrade head
+docker compose --profile worker up --build -d worker
+docker compose --profile worker logs --tail 20 worker
+docker compose --profile worker stop worker
+```
+
+Host equivalent using the existing virtual environment and explicit configuration:
+
+```powershell
+.\.venv\Scripts\python.exe -m csrs.worker --env-file .env
+```
+
+The worker profile is opt-in, keeping ordinary Compose startup compatible with explicit
+migrations. The worker uses the same PostgreSQL URL/image conventions as the API, restarts
+unless stopped, and has a 20-second Compose stop grace period. SIGTERM/SIGINT request graceful
+shutdown; active transactions finish, and forced termination rolls back uncommitted work.
+If database timeout settings are raised, review the stop grace period accordingly.
+
+| Setting | Default | Bounds/purpose |
+| --- | --- | --- |
+| CSRS_WORKER_POLL_INTERVAL_SECONDS | 15 | 0.05-3600 seconds while idle; catch-up delays are capped below |
+| CSRS_WORKER_BATCH_SIZE | 100 | 1-1000 scanned entries per page and expired rows per event transaction |
+| CSRS_WORKER_RETRY_INITIAL_SECONDS | 1 | 0.05-60 seconds; failure pacing and initial backoff |
+| CSRS_WORKER_RETRY_MAX_SECONDS | 30 | 0.05-300 seconds; at least the initial delay |
+
+Set these in .env or the worker's process environment. Existing Settings still requires a
+valid Redis URL, but the worker never contacts it. Logs are JSON with event, timestamp, pid,
+cycle counts, and sanitized error class/SQLSTATE. Settings, SQL text, and credentials are excluded.
+Known database/connection/pool errors retry; unexpected errors terminate for operator attention.
+
+Discovery reads a bounded index page without reservation locks. Each candidate event gets
+FOR UPDATE SKIP LOCKED, a fresh database clock, bounded shared cleanup, and an atomic commit.
+Busy events are deferred; fixed-cutoff keyset passes advance and wrap so a busy oldest group
+cannot monopolize discovery. PostgreSQL holds unfinished work; restarting loses no expiration
+obligation. Multiple workers can safely discover the same event. There is no fixed expiration
+latency SLA: backlog size, configured page/row limits, and event lock availability matter.
+After successful expiration, the worker scans again after at most 0.25 seconds. A productive
+pass also wraps after at most 0.25 seconds so equal-deadline holds get another bounded chunk.
+A full page containing only busy or stale candidates advances after at most one second; an
+idle or unproductive completed pass uses the normal poll interval. These are delay caps,
+not throughput or completion-time guarantees.
+
+Live Compose recovery smoke (PowerShell, worker stopped while generating overdue test holds):
+
+```powershell
+docker compose --profile worker stop worker
+$scenario = docker compose exec -T backend python scripts/smoke_worker.py prepare
+docker compose --profile worker up -d worker
+docker compose exec -T backend python scripts/smoke_worker.py verify $scenario
+```
+
+The local-only helper creates its own event/users, checks committed expiration/counter equality
+and live API/proxy readiness plus availability, then removes only its generated records.
+See [Phase 5 validation](docs/phase-5-validation.md) and the
+[twelve-section explanation](docs/phase-explanations/phase-5-explanation.md) for evidence and limits.

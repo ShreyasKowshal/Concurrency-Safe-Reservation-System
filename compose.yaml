@@ -66,6 +66,26 @@ services:
       retries: 5
       start_period: 10s
 
+  worker:
+    profiles: ["worker"]
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    env_file: .env
+    environment:
+      CSRS_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      CSRS_REDIS_URL: redis://redis:6379/0
+      CSRS_WORKER_POLL_INTERVAL_SECONDS: ${CSRS_WORKER_POLL_INTERVAL_SECONDS:-15}
+      CSRS_WORKER_BATCH_SIZE: ${CSRS_WORKER_BATCH_SIZE:-100}
+    command: ["python", "-m", "csrs.worker"]
+    volumes:
+      - ./backend:/workspace/backend
+    restart: unless-stopped
+    stop_grace_period: 20s
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   frontend:
     build:
       context: ./frontend

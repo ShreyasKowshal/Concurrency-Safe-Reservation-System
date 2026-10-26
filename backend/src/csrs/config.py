@@ -29,6 +29,10 @@ class Settings(BaseSettings):
     anonymous_session_ttl_seconds: int = Field(default=900, ge=60, le=3600)
     session_ttl_seconds: int = Field(default=28800, ge=300, le=604800)
     hold_ttl_seconds: int = Field(default=300, ge=1, le=3600)
+    worker_poll_interval_seconds: float = Field(default=15, ge=0.05, le=3600)
+    worker_batch_size: int = Field(default=100, ge=1, le=1000)
+    worker_retry_initial_seconds: float = Field(default=1, ge=0.05, le=60)
+    worker_retry_max_seconds: float = Field(default=30, ge=0.05, le=300)
 
     @property
     def secure_cookies(self) -> bool:
@@ -89,6 +93,8 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def require_https_in_production(self) -> "Settings":
+        if self.worker_retry_initial_seconds > self.worker_retry_max_seconds:
+            raise ValueError("worker retry initial delay must not exceed maximum delay")
         if self.environment == "production" and not self.secure_cookies:
             raise ValueError("production public_origin requires HTTPS")
         return self

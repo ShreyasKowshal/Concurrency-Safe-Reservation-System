@@ -23,6 +23,8 @@
 | ADR-019 | Owner-only event detail and scoped keyset pagination | Read drafts without changing public visibility or implementing a booking dashboard early; cursors never confer permission |
 | ADR-020 | Drafts can become stale; publication requires future database time | Allow draft repair, then recheck under the event lock; published start/deadline stay immutable and closed events are read-only |
 | ADR-021 | Phase 3 capacity uses stored allocation conservatively | Preserve bounds without implementing Phase 4 expiration; later shared cleanup must run under the same event lock |
+| ADR-022 | Bounded keyset discovery plus event-row SKIP LOCKED in Phase 5 | No reservation-first locks; fixed-cutoff passes advance past busy groups and restart safely from PostgreSQL |
+| ADR-023 | Optional bounded shared expiration and an event-first partial index | Keep API cleanup behavior while bounding worker row updates for large events; adds one maintained index and migration |
 
 Scope gates and acceptance criteria are in [phases](phases.md). Decisions are reviewed when
 requirements change, not silently bypassed by a new endpoint or worker.

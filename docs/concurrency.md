@@ -2,7 +2,8 @@
 
 **Implemented through Phase 4:** event-row locking, reservation commands, durable idempotency,
 and request-time expiration. Capacity edits and reservation commands share due-hold cleanup
-under the event lock. The standalone worker described below remains Phase 5 work.
+under the event lock. The standalone worker is implemented in Phase 5 and awaits review;
+see [its validation](phase-5-validation.md).
 
 ## Product rules
 
@@ -70,10 +71,16 @@ All steps use that decision instant. A confirmation accepted just before expiry 
 afterward; a request that arrived earlier but acquires the lock after expiry fails. Keep
 transactions short. Application/browser clocks never determine booking eligibility.
 
-Request-time cleanup reclaims an event's due holds before admission. A future standalone
-worker polls every approximately 15 seconds, selects bounded candidate-event batches, then
-locks/rechecks one event per transaction. It decrements only for rows actually transitioned.
-Repeated sweeps and multiple discoverers do not double-release. Begin with one worker.
+Request-time cleanup reclaims an event's due holds before admission. The standalone
+worker polls every 15 seconds while idle by default and discovers bounded candidate pages.
+It locks and rechecks one event per transaction using event-row FOR UPDATE SKIP LOCKED.
+Busy events are deferred.
+A fixed-cutoff keyset pass advances past busy groups and wraps; cleanup is bounded per event
+with the same shared transition. The worker position is navigation, never durable work state.
+It decrements only for rows actually transitioned.
+Productive pages and productive cursor wraps use a delay capped at 0.25 seconds. Full busy or
+stale pages scan ahead after at most one second; idle passes retain the configured poll delay.
+Repeated sweeps and multiple discoverers do not double-release. Begin operationally with one worker.
 
 Worker outages may delay persisted cleanup; they cannot authorize expired confirmations.
 Requests can reclaim capacity without waiting for the worker. Reads project overdue HELD as

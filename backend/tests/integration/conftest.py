@@ -19,7 +19,7 @@ from csrs.auth.service import issue_session as reservation_issue_session
 from csrs.config import Settings
 from csrs.database import create_database_engine
 from csrs.main import create_app
-from csrs.models import Event, Role, User
+from csrs.models import Event, Reservation, Role, User
 from csrs.reservations import service as reservation_service
 
 BACKEND = Path(__file__).resolve().parents[2]
@@ -218,3 +218,45 @@ def booking(clean_engine, user_factory, event_factory, postgres_settings):
         "credentials": credentials,
         "execute": execute,
     }
+
+
+@pytest.fixture
+def held_event_factory(clean_engine, user_factory, event_factory):
+    owner = user_factory("worker-owner@example.com", role=Role.ORGANIZER)
+
+    def create(count=1, *, due=True, status="HELD", event_status="PUBLISHED"):
+        event = event_factory(owner, capacity=max(count, 1), status=event_status)
+        with Session(clean_engine, expire_on_commit=False) as db, db.begin():
+            now = reservation_service.database_time(db)
+            users = [
+                User(
+                    id=uuid.uuid4(),
+                    normalized_email=f"{uuid.uuid4().hex}@example.com",
+                    password_hash=owner.password_hash,
+                )
+                for _ in range(count)
+            ]
+            db.add_all(users)
+            db.flush()
+            rows = [
+                Reservation(
+                    id=uuid.uuid4(),
+                    user_id=user.id,
+                    event_id=event.id,
+                    status=status,
+                    created_at=now - timedelta(minutes=10),
+                    hold_expires_at=now + timedelta(minutes=-1 if due else 5),
+                    confirmed_at=now - timedelta(minutes=5) if status == "CONFIRMED" else None,
+                    cancelled_at=now if status == "CANCELLED" else None,
+                    expired_at=now if status == "EXPIRED" else None,
+                )
+                for user in users
+            ]
+            db.add_all(rows)
+            db.get(Event, event.id).allocated_seats = (
+                count if status in {"HELD", "CONFIRMED"} else 0
+            )
+            db.flush()
+        return event, rows
+
+    return create

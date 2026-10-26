@@ -38,7 +38,7 @@ def test_clean_upgrade_metadata_parity_and_non_destructive_reupgrade(
             assert connection.scalar(text("SELECT count(*) FROM users")) == 1
             assert (
                 connection.scalar(text("SELECT version_num FROM alembic_version"))
-                == "0001_foundation"
+                == "0002_worker_expiry"
             )
             command.check(cfg)
 
@@ -52,3 +52,30 @@ def test_downgrade_and_reupgrade_only_on_disposable_database(database_factory):
             assert set(inspect(connection).get_table_names()) == {"alembic_version"}
             command.upgrade(cfg, "head")
             assert set(Base.metadata.tables) <= set(inspect(connection).get_table_names())
+
+
+def test_worker_index_upgrade_downgrade_preserves_existing_rows(database_factory, password_hash):
+    with database_factory() as engine, engine.begin() as connection:
+        cfg = config(connection)
+        command.upgrade(cfg, "0001_foundation")
+        connection.execute(
+            text(
+                "INSERT INTO users(normalized_email,password_hash) "
+                "VALUES ('worker-migration@example.com',:hash)"
+            ),
+            {"hash": password_hash},
+        )
+        name = "ix_reservations_event_held_expiry"
+        assert name not in {
+            item["name"] for item in inspect(connection).get_indexes("reservations")
+        }
+        command.upgrade(cfg, "head")
+        assert name in {item["name"] for item in inspect(connection).get_indexes("reservations")}
+        assert connection.scalar(text("SELECT count(*) FROM users")) == 1
+        command.downgrade(cfg, "0001_foundation")
+        assert name not in {
+            item["name"] for item in inspect(connection).get_indexes("reservations")
+        }
+        assert connection.scalar(text("SELECT count(*) FROM users")) == 1
+        command.upgrade(cfg, "head")
+        command.check(cfg)

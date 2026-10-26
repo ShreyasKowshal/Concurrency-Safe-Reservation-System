@@ -1,4 +1,5 @@
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import ExitStack
 from datetime import timedelta
 from threading import Barrier
 
@@ -154,18 +155,23 @@ def test_competing_registration_consumes_one_pre_session(client, client_factory,
     cookie = client.cookies["csrs_session"]
     barrier = Barrier(2)
 
-    def attempt():
-        with client_factory() as contender:
-            contender.cookies.set("csrs_session", cookie)
-            barrier.wait(timeout=10)
-            return contender.post(
-                "/api/v1/auth/register",
-                headers=csrf,
-                json={"email": "new@example.com", "password": PASSWORD},
-            ).status_code
+    def attempt(contender):
+        barrier.wait(timeout=10)
+        return contender.post(
+            "/api/v1/auth/register",
+            headers=csrf,
+            json={"email": "new@example.com", "password": PASSWORD},
+        ).status_code
 
-    with ThreadPoolExecutor(max_workers=2) as pool:
-        statuses = list(pool.map(lambda _: attempt(), range(2)))
+    with ExitStack() as clients:
+        contenders = [clients.enter_context(client_factory()) for _ in range(2)]
+        for contender in contenders:
+            contender.cookies.set("csrs_session", cookie)
+            # Materialize framework route/schema metadata before racing database commands.
+            # Invalid input does not consume the shared pre-session or create a user.
+            assert contender.post("/api/v1/auth/register", headers=csrf, json={}).status_code == 422
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            statuses = list(pool.map(attempt, contenders))
     assert sorted(statuses) == [201, 403]
     with db.begin():
         assert db.scalar(select(func.count()).select_from(User)) == 1

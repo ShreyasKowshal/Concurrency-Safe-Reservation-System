@@ -2,23 +2,43 @@
 
 from datetime import datetime
 
-from sqlalchemy import update
+from sqlalchemy import literal_column, select, update
 from sqlalchemy.orm import Session
 
 from csrs.models import Event, Reservation
 
 
-def expire_due_holds(db: Session, event: Event, decision_time: datetime) -> int:
-    changed = list(
-        db.scalars(
-            update(Reservation)
+def expire_due_holds(
+    db: Session,
+    event: Event,
+    decision_time: datetime,
+    *,
+    limit: int | None = None,
+) -> int:
+    statement = update(Reservation).where(
+        Reservation.event_id == event.id,
+        Reservation.status == literal_column("'HELD'"),
+        Reservation.hold_expires_at <= decision_time,
+    )
+    if limit is not None:
+        if limit < 1:
+            raise ValueError("Expiration limit must be positive")
+        candidates = (
+            select(Reservation.id)
             .where(
                 Reservation.event_id == event.id,
-                Reservation.status == "HELD",
+                Reservation.status == literal_column("'HELD'"),
                 Reservation.hold_expires_at <= decision_time,
             )
-            .values(status="EXPIRED", expired_at=decision_time, updated_at=decision_time)
-            .returning(Reservation.id)
+            .order_by(Reservation.hold_expires_at, Reservation.id)
+            .limit(limit)
+        )
+        statement = statement.where(Reservation.id.in_(candidates))
+    changed = list(
+        db.scalars(
+            statement.values(
+                status="EXPIRED", expired_at=decision_time, updated_at=decision_time
+            ).returning(Reservation.id)
         )
     )
     event.allocated_seats -= len(changed)

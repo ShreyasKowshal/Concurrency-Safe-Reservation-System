@@ -92,9 +92,17 @@ jobs:
           curl --fail --retry 5 --retry-delay 2 http://localhost:5173/api/v1/health/ready
       - name: Run tests inside Compose against isolated PostgreSQL
         run: docker compose --profile test run --rm backend-test
+      - name: Worker startup, backlog recovery, and graceful shutdown
+        shell: bash
+        run: |
+          docker compose --profile worker build worker
+          scenario=$(docker compose exec -T backend python scripts/smoke_worker.py prepare)
+          docker compose --profile worker up -d worker
+          docker compose exec -T backend python scripts/smoke_worker.py verify "$scenario"
+          docker compose --profile worker stop worker
       - name: Show service logs on failure
         if: failure()
-        run: docker compose --profile test logs --no-color
+        run: docker compose --profile test --profile worker logs --no-color
       - name: Stop disposable CI services
         if: always()
-        run: docker compose --profile test down --volumes
+        run: docker compose --profile test --profile worker down --volumes
