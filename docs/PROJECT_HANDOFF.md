@@ -1,35 +1,41 @@
-# CSRS project handoff: continue with Phase 4
+# CSRS project handoff: continue with Phase 5
 
-**Snapshot:** Phases 1-3 are implemented, reviewed, committed, and pushed to main.
-The verified Phase 3 commit is `48790480c9959442d1121dd85191529199960399`.
-Its GitHub Actions workflow is green. **Phase 4 has not been implemented or started by this
-documentation task.** This handoff prepares a future conversation to implement it.
+**Snapshot, 2026-10-26:** Phases 1-4 are implemented, reviewed, committed, and pushed to main.
+The latest verified implementation commit is `50cca058987a72adf4ac575b28cdbdc4840ca685`
+(`feat: implement concurrency-safe reservations`). Its GitHub Actions workflow is **green**.
+The final local suite passed **417 tests: 114 unit/contract and 303 real PostgreSQL integration**.
+**Phase 5 - Expiration & Recovery - is next and has not started.** This documentation-only
+update prepares that phase; it implements no worker or application change.
 
 Repository: [Concurrency-Safe-Reservation-System](https://github.com/ShreyasKowshal/Concurrency-Safe-Reservation-System).
 Local workspace: `C:\Users\ASUS\OneDrive\Desktop\csrs`.
 
 Before editing in a new conversation, read this document, inspect Git status, and read the
 current source and contracts. This is a snapshot, not a replacement for the implementation.
-Some older reports and the README retain pre-commit "pending review" wording. Those are
-historical review records; they do not mean approved Phases 2/3 must be implemented again.
+Some older reports, explanations, and the README retain pre-commit "pending review" wording. Those are
+historical review records; they do not mean approved Phases 2-4 must be implemented again.
 Do not rewrite their results to imply tests ran at a later commit.
 
 ## A. Project overview
 
 The **Concurrency-Safe Reservation System (CSRS)** is a student-built event/workshop application
 intended to demonstrate backend engineering in Software Engineer / SDE-1 interviews.
-Its eventual central promise is that concurrent requests cannot overbook an event.
+Its central capacity guarantee is implemented and tested through the shared PostgreSQL protocol:
+concurrent reservation requests do not allocate beyond an event's capacity.
 
-An attendee will browse events and hold, confirm, or cancel one seat. An organizer manages
-their own events and will eventually inspect bookings. Local administrators provision
+An attendee can use backend APIs to browse events and hold, confirm, or cancel one seat.
+An organizer manages their own events and will eventually inspect a booking dashboard.
+Local administrators provision
 organizer access. The project is a modular monolith, deliberately sized for one student to
 understand and defend; it is not a collection of microservices.
 
 Currently working: health checks/UI, configuration, PostgreSQL schema/migrations, backend
-registration/login/logout/current user, sessions/CSRF/roles, and organizer event-management
-APIs with public discovery. **Reservations, idempotency execution, hold expiration, workers,
-Redis integration, and business UI remain unimplemented.** An event lock and a reservation
-table alone are not proof of a working no-overbooking system.
+registration/login/logout/current user, sessions/CSRF/roles, organizer event-management APIs,
+public discovery/availability, one-seat holds, confirmation/cancellation, owner reservation
+detail/history, durable idempotency, and request-time expiration. **The standalone expiration
+worker, Redis integration, organizer dashboard, business UI, and production deployment remain
+unimplemented.** The 50/100-attempt tests establish their documented correctness cases; they
+are not production throughput or latency benchmarks.
 
 The roadmap spans eight phases. Complete, test, report, review, approve, commit/push, and
 verify CI for one phase before proceeding. Do not purchase services or provision paid
@@ -39,9 +45,9 @@ infrastructure under a routine implementation request.
 
 | Component | Actual role and current boundary |
 | --- | --- |
-| Python 3.12, FastAPI, Uvicorn | Synchronous backend handlers, validation, and HTTP serving; API/package version 0.3.0 |
+| Python 3.12, FastAPI, Uvicorn | Synchronous backend handlers, validation, and HTTP serving; API/package version 0.4.0 |
 | React 19, TypeScript 5.9, Vite 7, Node.js 24 | Existing health screen and development proxy; no account/event/booking forms |
-| PostgreSQL 17 | Durable source of truth for identity, events, and future capacity/reservations |
+| PostgreSQL 17 | Durable source of truth for identity, events, capacity, reservations, and idempotency |
 | SQLAlchemy 2.0, Psycopg 3 | Synchronous sessions, explicit transactions, connection pool, SQL, and PostgreSQL driver |
 | Alembic | Explicit schema migrations; one revision, 0001_foundation |
 | Redis 7.4 | Running in Compose with persistence disabled; no application Redis client, limiter, cache, or session store |
@@ -67,7 +73,7 @@ port 8000 does not get a CSRF exemption. Same-origin serving of the built fronte
 future deployment design, not implemented hosting.
 
 FastAPI routes handle HTTP/body validation and source/content-type checks. Authentication
-and event services own explicit transactions. SQLAlchemy uses Psycopg to communicate with
+and event/reservation services own explicit transactions. SQLAlchemy uses Psycopg to communicate with
 PostgreSQL at READ COMMITTED isolation. Each request/worker transaction must own its own
 database session; never share one concurrently. A database Session is distinct from a
 user's security session row. No generic repository framework is needed.
@@ -75,11 +81,15 @@ user's security session row. No generic repository framework is needed.
 For an existing-event mutation, the current flow is: validate HTTP input, begin a service
 transaction, validate organizer/session/CSRF, lock the owned event, recheck authorization
 after any wait, validate/change the event, flush, commit, then respond. A flush sends SQL;
-it does not commit. No Redis call, remote I/O, or password work belongs inside the event lock.
+it does not commit. Reservation commands first claim a user-scoped idempotency key, then lock
+the event, refresh authorization, sample database time, clean due holds, and commit the
+transition/counter/outcome together. No Redis call, remote I/O, or password work belongs inside
+the event lock.
 
 See the existing [architecture and three diagrams](architecture.md), especially the system,
-application, and **planned** reservation transaction diagrams. Their labels distinguish
-implemented event locking from future reservation allocation. Detailed authority is in
+application, and **implemented** reservation transaction diagrams. Their labels distinguish
+implemented Phase 1-4 services from the planned worker, Redis integration, and business UI.
+Detailed authority is in
 [API contracts](contracts/api.md), [concurrency](concurrency.md), [database](database.md),
 [security](security.md), [decisions](decisions.md), and [phase gates](phases.md).
 
@@ -94,24 +104,32 @@ implemented event locking from future reservation allocation. Detailed authority
 | `backend/src/csrs/api/health.py` | Liveness/readiness routes |
 | `backend/src/csrs/api/auth.py` | Five authentication endpoints |
 | `backend/src/csrs/api/events.py` | Public and organizer event routers |
+| `backend/src/csrs/api/reservations.py` | Hold/confirm/cancel, private detail/history, advisory availability routes |
 | `backend/src/csrs/api/openapi.py` | Cookie/CSRF security declarations; preserves path/query parameters |
 | `backend/src/csrs/auth/` | Crypto, schemas, HTTP guards, service transactions, dependencies, admin commands |
 | `backend/src/csrs/events/` | Event schemas, transaction services, errors, scoped pagination |
+| `backend/src/csrs/reservations/service.py` | Durable claim/replay, event-locked reservation transactions, supporting reads |
+| `backend/src/csrs/reservations/transitions.py` | Shared expire_due_holds helper; caller owns event lock/transaction |
+| `backend/src/csrs/reservations/schemas.py` | UTC reservation/page/availability response DTOs |
 | `backend/src/csrs/cli.py` | Explicit local promotion/session-cleanup entrypoint |
 | `backend/migrations/env.py` | Alembic metadata and supplied isolated test-connection support |
 | `backend/migrations/versions/0001_foundation_foundation_schema_and_sessions.py` | Explicit initial schema upgrade/downgrade |
 | `backend/scripts/export_health_contract.py` | Intentionally refreshes complete and health OpenAPI snapshots |
+| `backend/scripts/smoke_reservations.py` | Local live HTTP verification with generated records and scoped cleanup |
 | `backend/tests/unit/` | Config, health, crypto, event input/cursor, runtime-contract checks |
 | `backend/tests/integration/` | Real PostgreSQL auth, events, schema, migrations, and concurrency/failure cases |
-| `frontend/src/App.tsx` | Health screen; latest change is Phase 3 scope text |
+| `backend/tests/integration/test_reservations.py` | Reservation HTTP/state/deadline behavior and SQL invariants |
+| `backend/tests/integration/test_reservation_transactions.py` | Two-process contention, controlled lock waits, strengthened clock test, faults |
+| `frontend/src/App.tsx` | Health screen; latest change is Phase 4 label |
 | `frontend/src/api/health.ts` | Validated readiness fetch and frontend error classification |
 | `frontend/vite.config.ts` | Origin-preserving /api proxy |
 | `compose.yaml`, `backend/Dockerfile`, `frontend/Dockerfile` | Development/test containers, ports, volumes, startup |
 | `.github/workflows/ci.yml` | Foundation CI, including required PostgreSQL tests |
 | `.github/dependabot.yml` | Dependency-update proposals; does not automatically merge changes |
 
-There is no reservation command module/router, worker process, or Redis integration to reuse
-yet. New Phase 4 code should follow the existing module/service style, not claim those pieces exist.
+The reservation module and shared expiration transition exist and must be reused by Phase 5.
+There is no standalone worker entrypoint, worker Compose service, or Redis integration yet.
+Do not invent an existing worker command or independently commit the shared helper.
 
 ## D. Completed phases and their evidence
 
@@ -123,6 +141,7 @@ suite retains earlier behaviors; counts must not be added together as independen
 | 1 | Monorepo, configuration, health backend/UI, Compose, Alembic scaffolding, CI, contracts | 24 passed: 22 unit/contract + 2 real PostgreSQL; exit 0 | [Validation](phase-1-validation.md), [explanation](phase-explanations/phase-1-explanation.md) |
 | 2 | Five tables, initial migration, sessions/auth/CSRF/roles/admin CLI | 170 passed: 54 unit/contract + 116 PostgreSQL; exit 0 | [Validation](phase-2-validation.md), [explanation](phase-explanations/phase-2-explanation.md) |
 | 3 | Public/owner event reads, draft create/edit/capacity/publish/close, event locks | 323 passed: 107 unit/contract + 216 PostgreSQL; exit 0 | [Validation](phase-3-validation.md), [explanation](phase-explanations/phase-3-explanation.md) |
+| 4 | Holds, confirmation/cancellation, request-time expiry, durable idempotency, private history/detail, public availability | 417 passed: 114 unit/contract + 303 PostgreSQL; exit 0 | [Validation](phase-4-validation.md), [explanation](phase-explanations/phase-4-explanation.md) |
 
 ### Phase 1: foundation
 
@@ -165,8 +184,41 @@ timeout. Capacity tests use consistent seeded reservation data; no booking API w
 Final local evidence: 323 passed in 26.81s, no failures/skips, 31 expected live proxy smoke
 checks, and six localhost HTTP checks. Temporary smoke records were removed and original
 row counts restored. No generated test databases remained. CI is independently verified green
-for the Phase 3 commit named at the top. These are correctness tests for their stated scope,
-not reservation performance or completed final-seat booking evidence.
+for Phase 3 commit `48790480c9959442d1121dd85191529199960399`. These are correctness tests
+for their stated scope, not reservation performance or completed final-seat booking evidence.
+
+### Phase 4: concurrency-safe reservations
+
+Implemented all six reservation-flow operations in H1, using the existing authentication,
+five-table schema, READ COMMITTED engine, constraints, and event-lock protocol. No schema
+revision or dependency upgrade was needed. Capacity edits now reclaim due holds under their
+existing event lock. Commands commit claim, cleanup, reservation state, counter, and completed
+response together. GETs remain write-free and public availability is advisory.
+
+Final local verification: **417 passed in 58.53s**, exit 0, no failures/skips: 114 unit/contract
+plus 303 real PostgreSQL integration cases. The suite retains Phase 1-3 behavior. Two independent
+Uvicorn API processes admitted exactly 1 of 50 attempts for capacity 1 and 20 of 100 for capacity
+20. Duplicate keys, same-user different keys, competing transitions, rollback, timeout,
+response loss, and simulated uncertain commit outcomes pass with SQL reconciliation.
+
+The audit found zero BLOCKER/HIGH/LOW issues and one MEDIUM test-coverage finding. It is
+resolved: the post-lock clock test now observes the waiting transaction's actual xact_start,
+sets a deadline strictly between that start and event-lock release, and checks persisted expiry
+and the durable 409 outcome. The target passed initially and in **10/10 fresh executions**.
+An in-memory SELECT now() negative control returned 200 and failed the same 409 assertion as
+intended, proving sensitivity to transaction-start time. Production behavior was unchanged.
+
+Other recorded checks passed: Ruff/51 formatted Python files, dependency checks, Alembic head/
+current/drift, frontend TypeScript/build, Compose, exact OpenAPI equality, 33 live HTTP smoke
+checks with original table counts restored, six localhost checks, Markdown, local references,
+and four diagrams. Supplemental verification runs do not add cases to the 417-test total.
+The validation report distinguishes initial and final follow-up checks and their commands.
+
+Commit `50cca058987a72adf4ac575b28cdbdc4840ca685` changes 32 files: 21 modified and 11 added,
+3,492 insertions and 353 deletions. It was pushed to origin/main with matching local/remote
+hashes and a clean working tree. [Foundation CI](https://github.com/ShreyasKowshal/Concurrency-Safe-Reservation-System/actions/runs/40235993807)
+is completed/success for that exact commit; backend, frontend, and compose jobs are all green.
+These are Phase 4 implementation results, not fresh test executions for this documentation edit.
 
 ## E. Current database design
 
@@ -177,16 +229,17 @@ not reservation performance or completed final-seat booking evidence.
 | users | UUID, normalized_email, Argon2id password_hash, ATTENDEE/ORGANIZER role, is_active, created_at/updated_at |
 | sessions | UUID, optional users FK, ANONYMOUS/AUTHENTICATED kind, unique cookie token_hash, csrf_token, created_at/expires_at/revoked_at |
 | events | UUID, organizer users FK, title/description/location, starts_at/ends_at/booking_closes_at, status, capacity/allocated_seats, timestamps |
-| reservations | UUID, event/user FKs, status, hold_expires_at, confirmed_at/cancelled_at/expired_at, timestamps; storage only so far |
-| idempotency_records | UUID, user FK, key, request_fingerprint, response_status/body, created_at/completed_at; storage only so far |
+| reservations | UUID, event/user FKs, status, hold_expires_at, confirmed_at/cancelled_at/expired_at, timestamps; Phase 4 transitions implemented |
+| idempotency_records | UUID, user FK, key, request_fingerprint, response_status/body, created_at/completed_at; durable command outcomes implemented |
 
 All application IDs are UUIDs with Python/server defaults; PostgreSQL supplies gen_random_uuid().
 Foreign keys use RESTRICT, preserving referenced history. Time columns are timezone-aware;
 API timestamps use UTC. States are strings with named CHECK constraints, not PostgreSQL enums.
 Created timestamps default to transaction-start now(). SQLAlchemy updates updated_at on user/
-event/reservation updates; arbitrary administrator SQL has no automatic timestamp trigger.
+event/reservation updates; Phase 4 explicitly uses the decision instant for new/transitioned
+reservation timestamps. Arbitrary administrator SQL has no automatic timestamp trigger.
 
-### Constraints that Phase 4 must respect
+### Constraints all reservation/worker writes must preserve
 
 - Email is normalized ASCII/lowercase and unique. Session cookie digests are unique. An
   anonymous session has no user; an authenticated session must reference one. Session expiry
@@ -205,15 +258,15 @@ event/reservation updates; arbitrary administrator SQL has no automatic timestam
 - Idempotency has unique `(user_id, key)`. Keys are 1-128 visible ASCII characters without
   spaces; fingerprints are 64 lowercase hex characters. Pending response fields are all NULL;
   completed fields must be present together with status 200-499, object JSONB, and a completion
-  timestamp at/after creation. The future service must forbid independently committed pending
-  claims and exclude transient/security outcomes despite the wider storage constraint.
+  timestamp at/after creation. The Phase 4 service forbids independently committed pending
+  claims and excludes transient/security outcomes despite the wider storage constraint.
 
 Reservation owner/event immutability and legal transition order require service enforcement;
 the schema alone does not supply them. No trigger/stored procedure enforces cross-table counts.
 
 ### Capacity invariant and indexes
 
-The future service must maintain, for each event at every committed state:
+The implemented reservation protocol maintains, for each event at every committed state:
 
 ```text
 allocated_seats = count(persisted HELD) + count(CONFIRMED)
@@ -233,13 +286,14 @@ the user/key idempotency constraint. See actual names in `backend/src/csrs/model
 
 ### Migrations and transactions
 
-Alembic head is **0001_foundation**. Phase 3 changed no schema. Migrations are explicit admin
+Alembic head is **0001_foundation**. Phases 3-4 changed no schema. Migrations are explicit admin
 steps, not startup create_all or an automatic task in each API process. Preserve current
 migrations; add a revision only for a necessary reviewed schema change. Downgrade is destructive
 and is tested only against generated disposable databases.
 
 READ COMMITTED, explicit service transactions, and `SELECT ... FOR UPDATE` are established.
-For Phase 4, claim idempotency, lock event, then lock/update reservation rows. Never commit
+User commands claim idempotency, lock the event, then lock/update reservation rows. Phase 5
+worker transactions need no user key and must lock the event before reservation updates. Never commit
 row/counter/idempotency pieces independently or use a nested service's independent commit.
 
 ## F. Authentication and authorization
@@ -274,14 +328,14 @@ the __Host-csrs_session prefix; production settings require an HTTPS origin. No 
 The existing `backend/src/csrs/auth/http.py` validates trusted Origin, or Referer only when
 Origin is absent.
 Null, duplicate, or untrusted Origin is rejected without fallback. Mutations require JSON and
-the matching session-bound X-CSRF-Token, including registration/login, logout, and future
+the matching session-bound X-CSRF-Token, including registration/login, logout, and implemented
 idempotent replays. Bootstrap may lack source headers initially but rejects explicitly unsafe
 sources/Fetch Metadata. No permissive CORS or special script/Swagger bypass exists.
 
 Reuse `Database`, `CurrentUser`, `require_attendee`, `require_organizer`, and `require_owner`
 from `backend/src/csrs/auth/dependencies.py`; organizers retain attendee capabilities.
 Read dependencies alone
-do not authorize a write. Future mutation services must use the existing session/CSRF primitives
+do not authorize a write. Reservation mutation services use the existing session/CSRF primitives
 inside their transaction, refresh user/session state after waits, and check owner IDs obtained
 from stored resources. Do not call current_user's transaction-owning helper inside an already
 open transaction; structure service ownership deliberately. Reuse the established controlled
@@ -335,25 +389,24 @@ every query still filters publication/owner. Pages are not a frozen snapshot acr
 Summaries contain id/title/location/start/deadline/status/capacity; detail adds description/
 end/organizer_id. Organizer variants add allocated_seats; public ones do not expose it.
 
-**Integration point:** `backend/src/csrs/events/service.py` compares capacity with stored
-allocation without touching overdue holds. Phase 4 must add shared due-hold cleanup under the same event
-lock before capacity edits/admission. Its `_owned_event` context manager already opens a
+**Integration point:** `backend/src/csrs/events/service.py` now runs shared due-hold cleanup
+under the event lock before comparing capacity with stored allocation. Cleanup commits even
+if a requested reduction is still refused. Its `_owned_event` context manager already opens a
 transaction: do not nest it blindly inside another transaction or independently commit cleanup.
 Preserve current role/ownership/time restrictions. Closing must continue to leave existing
 valid holds eligible for future confirmation; a blanket PUBLISHED check on confirmation would
 violate the contract. Capacity changes must not invalidate already counted bookings.
 
-## H. Phase 4: next implementation task, still planned
+## H. Implemented Phase 4 reservation contract to preserve
 
 ### H1. Scope, authority, and endpoint contracts
 
-Implement holds, confirmation/cancellation, request-time expiry, and durable idempotency.
+Phase 4 implements holds, confirmation/cancellation, request-time expiry, and durable idempotency.
 The normative behavior is in [concurrency.md](concurrency.md) and [API contract](contracts/api.md).
-The implemented OpenAPI snapshot deliberately has **no reservation routes or DTOs yet**;
-add/register/export those when the relevant operations are implemented, not by copying a
-planned endpoint into the spec alone. This section is requirements, not completed functionality.
+The [OpenAPI snapshot](contracts/api.openapi.yaml) includes the registered reservation routes,
+DTOs, key header, replay headers, and cookie/CSRF declarations. Preserve these working contracts.
 
-| Planned method/path | Body and success | Access |
+| Implemented method/path | Body and success | Access |
 | --- | --- | --- |
 | POST /events/{event_id}/holds | `{}`; 201 reservation | Authenticated attendee/organizer, session CSRF/source/JSON, Idempotency-Key |
 | POST /reservations/{reservation_id}/confirm | `{}`; 200 reservation | Reservation owner, same protections and key |
@@ -362,18 +415,14 @@ planned endpoint into the spec alone. This section is requirements, not complete
 | GET /me/reservations | Paginated reservation rows | Authenticated user |
 | GET /events/{event_id}/availability | event_id/capacity/available_seats/as_of | Public, advisory, never allocation authority |
 
-The first three commands are Phase 4's explicit deliverables. The remaining rows are the
-existing supporting read contracts for the reservation flow and must retain their stated
-visibility/representation when implemented. They are not working today. The additional planned
-organizer dashboard is `GET /organizer/events/{event_id}/dashboard`: owner-only counts and
-paginated reservation rows; it also remains unimplemented. The phase table does not separately
-assign every read/dashboard route to a phase; do not represent the dashboard or full UI as an
-already completed Phase 4 requirement. Resolve any expansion against the approved phase scope.
+All six operations above are implemented. The organizer dashboard
+`GET /organizer/events/{event_id}/dashboard` remains planned and unregistered: future owner-only
+counts and paginated reservation rows. Dashboard/business UI work is not part of Phase 5.
 
 Reservation output is id/event_id/effective status/created_at/hold_expires_at/confirmed_at/
 cancelled_at/expired_at/server_time. UUID IDs, UTC RFC 3339 times, sanitized validation, and
 the existing error envelope are retained. Reject client-supplied user/owner/state/counter fields.
-History pagination has stable ordering/ID tie-breaker, default 20 and max 100.
+History pagination orders `(created_at,id)` ascending with user-scoped cursors, default 20 and max 100.
 An overdue stored HELD reads as effective EXPIRED without a GET-side write; expired_at remains
 null until cleanup persists it. Availability is computed in one consistent database query
 from valid holds plus confirmed rows, is not cached, and never guarantees a later hold succeeds.
@@ -388,8 +437,8 @@ not bypass it. Terminal rows remain history. Rebooking needs a new row and a new
 
 A new hold requires PUBLISHED status, an open booking deadline, no active reservation for
 that user/event after due cleanup, and allocated_seats < capacity, checked only after locking.
-The planned hold TTL is five minutes (300 seconds), globally configurable when implemented.
-It is not an existing Settings field. The deadline is:
+The hold TTL defaults to five minutes (300 seconds), configured through Settings and
+`CSRS_HOLD_TTL_SECONDS` with bounds 1-3600 seconds. The deadline is:
 
 ```text
 hold_expires_at = earlier of (decision_time + hold TTL) and event.booking_closes_at
@@ -426,14 +475,15 @@ of the old hold TTL. Do not add event-wide cancellation, quantities, seat maps, 
 
 ### H4. Transaction, lock order, and database time
 
-Follow the established single-event protocol:
+The reservation service implements this single-event user-command protocol:
 
 1. Authenticate and validate JSON, source/CSRF, request shape, and ownership context.
    A future Phase 6 rate limiter runs outside the capacity transaction; do not implement
    Redis merely because it appears in this later protocol.
 2. Begin one READ COMMITTED transaction and claim the user-scoped idempotency key.
    Session/CSRF and current authorization must also be valid inside the mutation service.
-3. Lock the event using SELECT ... FOR UPDATE. Read current capacity/state after the lock,
+3. After any claim wait, refresh session/CSRF/authorization before replay. For a new claim,
+   lock the event using SELECT ... FOR UPDATE. Read current capacity/state after the lock,
    with refreshed SQLAlchemy state, and recheck authorization/session after waits.
 4. Sample PostgreSQL **clock_timestamp() after acquiring the event lock**. Use this single
    decision instant for all due-hold checks and transition timestamps in that command.
@@ -463,7 +513,8 @@ throughput claims or redesigning inventory before evidence exists.
 
 ### H5. Idempotency, duplicate commands, and uncertain outcomes
 
-- Require Idempotency-Key on hold/confirm/cancel: 1-128 visible ASCII characters, no spaces.
+- Require exactly one Idempotency-Key on hold/confirm/cancel: 1-128 visible ASCII characters,
+  no spaces; missing, duplicate, and malformed keys receive sanitized 422 validation.
   Scope is user-wide, not merely per endpoint. Fingerprint method + canonical path + validated
   canonical JSON body. The same key with another path/body is not a new operation.
 - Use PostgreSQL uniqueness to arbitrate competing claims. The winner records its response
@@ -484,8 +535,9 @@ throughput claims or redesigning inventory before evidence exists.
 - A response lost after commit is recovered with the same key. A connection lost during
   commit has an **uncertain outcome**, not proof of rollback. The client must retry that key;
   do not automatically generate a new one or blindly repeat non-idempotent work.
-- Bounded server retries are only for known safe transaction-abort cases. Lock timeout rolls
-  back and returns retryable 503. Do not continue using an aborted SQLAlchemy transaction
+- The current service performs no automatic retries. Any future bounded server retry must be
+  limited to known safe transaction-abort cases. Lock timeout rolls back and returns retryable
+  503. Do not continue using an aborted SQLAlchemy transaction
   after an IntegrityError without correct rollback/savepoint handling.
 
 Use the existing error codes: EVENT_FULL, BOOKING_CLOSED, ACTIVE_RESERVATION_EXISTS,
@@ -497,9 +549,9 @@ private resource 404, unsupported JSON media type 415, invalid fields 422, trans
 
 ### H6. Request-time expiration versus Phase 5 worker
 
-Phase 4 must reclaim due holds for the locked event before admission and integrate that shared
-cleanup into capacity edits. It must also reject expired confirmations at the boundary even
-when no worker runs. Decrement only rows actually transitioned. Cancellation of an overdue
+Phase 4 reclaims due holds for the locked event before admission and uses the shared cleanup
+in capacity edits. It rejects expired confirmations at the boundary even when no worker runs.
+Cleanup decrements only rows actually transitioned. Cancellation of an overdue
 hold results in EXPIRED, not a second release or an invented CANCELLED transition.
 
 Useful cleanup may coexist with a business failure. Confirming an expired hold must commit
@@ -516,52 +568,119 @@ duplicate sweeps, and stale candidates belong to that phase's verification, not 
 worker test claim in Phase 4. Unvisited events may retain conservative stored HELD rows until
 request cleanup or the later sweeper runs.
 
-### H7. Required tests and acceptance checklist
+### H7. Completed tests, audit, and acceptance evidence
 
-Build on `backend/tests/integration/conftest.py` and the real lock-wait pattern in
-`backend/tests/integration/test_event_transactions.py`. Use generated PostgreSQL databases,
-independent connections, real commits, barriers/controlled lock holders, and observed blocking.
-Do not replace PostgreSQL with SQLite or mocked locks. Exercise both operation orderings and
-deadline equality; do not infer race correctness from arbitrary sleeps. Cross-process evidence
-is required by phases.md; do not rely on a single process's shared Python state.
+The implemented suites use generated PostgreSQL databases, independent sessions/connections,
+real commits, barriers/controlled lock holders, and observed pg_blocking_pids waits.
+The two-process HTTP tests start separate Uvicorn apps/engines. Active connections are bounded
+by each pool (5 plus overflow 5), not 50/100 pre-opened connections. This still exercises
+cross-process coordination without Python mutexes or SQLite substitutes.
 
-Required cases include final-seat contention among different users; same-user/different-key
-contention; duplicate same-key/same-body and same-key/different-body; confirm versus expiry;
-cancel versus expiry; confirm versus cancel; capacity edit versus admission; closing versus
-holds/valid confirmation; and post-lock authorization/expiry changes. Verify only one release,
-no allocation on rejected admission, active-user uniqueness, and response-loss replay.
+Covered cases include final-seat contention, concurrent same-user/different-key and duplicate
+claims, path fingerprint mismatch, confirm/cancel/expiry in both orderings, capacity edit versus
+admission, close versus admission/valid confirmation, post-wait auth/state changes, and response
+loss/replay. All valid command bodies are `{}`; different nonempty bodies fail validation before
+a claim. SQL checks compare the counter with persisted HELD/CONFIRMED rows in one snapshot.
 
-Inject faults between row/counter/idempotency writes, before commit, and after commit before
-response; cover unknown commit outcome and lock timeout. Check the invariant from one SQL
-snapshot/statement or a consistent transaction, not unrelated reads across concurrent commits.
-Separate future rate-limiter tests so throttling cannot hide booking races. Worker restart/
-Redis-outage scenarios are added when those components are implemented. Keep environment,
-process counts, database/pool settings, seed/workload, commit, failures, and reproduction
-commands for any concurrency/load result. No invented latency/throughput/success metrics.
+Fault tests cover row/counter/outcome writes, before commit, response loss after commit, and
+both committed/uncommitted simulations of uncertain commit outcomes. Real statement timeout
+rolls back and permits same-key retry. Network loss during COMMIT is simulated, not a physical
+connection-cut experiment. Worker restart/stale sweep/duplicate sweep recovery is Phase 5;
+Redis outage/rate-limit behavior is Phase 6. Do not present those future tests as already passed.
 
-Phase 4 is ready for review only when:
+Phase 4's implemented acceptance gate is complete:
 
-- [ ] Hold/confirm/cancel routes, DTOs, errors, CSRF/ownership, and OpenAPI match the contracts.
-- [ ] One-seat admission, capped five-minute holds, exact time boundaries, terminal history,
+- [x] Hold/confirm/cancel routes, DTOs, supporting reads, errors, CSRF/ownership, and OpenAPI match.
+- [x] One-seat admission, capped five-minute holds, exact time boundaries, terminal history,
   repeat-confirm/cancel rules, and existing CLOSED-event behavior are implemented/tested.
-- [ ] All booking/capacity paths follow one event-lock protocol and shared due-hold cleanup.
-- [ ] Every committed test snapshot satisfies counter bounds/equality and active-user uniqueness.
-- [ ] Durable claim/fingerprint/replay, concurrent duplicates, stored business conflicts,
+- [x] All booking/capacity paths follow one event-lock protocol and shared due-hold cleanup.
+- [x] Committed test snapshots satisfy counter bounds/equality and active-user uniqueness.
+- [x] Durable claim/fingerprint/replay, concurrent duplicates, stored business conflicts,
   rollback, response loss, uncertain commit, and retryable timeout tests pass.
-- [ ] Existing 323 cases remain valid; change only assertions legitimately affected by new
-  registered routes/contracts. Run the full suite, not only new happy-path tests.
-- [ ] Real PostgreSQL deterministic race evidence, migration checks if needed, lint/format,
+- [x] Full suite: 417 passing cases, retaining Phase 1-3 behavior with documented scope updates.
+- [x] Real PostgreSQL deterministic race evidence, migration checks, lint/format,
   TypeScript/build, Compose, API-contract, and relevant HTTP smoke checks are reported.
-- [ ] Phase 4 validation/explanation documents show actual counts, commands, limitations,
+- [x] Phase 4 validation/explanation documents show actual counts, commands, limitations,
   changed-file manifest, and clear separation from the unimplemented Phase 5-8 work.
-- [ ] Stop for review before commit/push; do not implement worker, Redis integration, full UI,
-  payments, or deployment under the Phase 4 task.
+- [x] Independent audit completed; the MEDIUM clock-test finding resolved and mutation-checked.
+- [x] User approved publication; implementation committed/pushed with matching hashes and green CI.
+- [x] Worker, Redis integration, full UI, payments, and deployment remain deferred.
 
-## I. Remaining roadmap and dependencies
+## I. Next phase: Phase 5 - Expiration & Recovery
+
+**Planned only; not implemented or started by this handoff update.** Begin Phase 5 only after
+a new explicit implementation request. Its purpose is to persist expiration on quiet events
+and recover safely after worker/database interruption. Request-time correctness already exists.
+
+### Dependencies and reuse
+
+- Verified Phase 4 implementation `50cca058987a72adf4ac575b28cdbdc4840ca685` and its green CI.
+- Existing PostgreSQL models, deadline/state constraints, due-hold index, READ COMMITTED engine,
+  per-event serialization, and database-clock helper.
+- `backend/src/csrs/reservations/transitions.py::expire_due_holds`: it updates due HELD rows,
+  decrements by rows actually changed, and never starts/commits a transaction or acquires a lock.
+- Existing real PostgreSQL fixtures, observed-lock helpers, invariant SQL, fault tests, and
+  strengthened post-lock clock test. Preserve all 417 existing cases as regression coverage.
+
+Do not call the user command service with invented cookies or retry keys from the worker.
+The worker is an internal database maintenance process, not a user HTTP command; it needs no
+session, CSRF, or user idempotency record. It reuses the same locked state transition.
+
+### Worker and recovery requirements
+
+1. Add a standalone polling process using the backend image, initially one worker. The existing
+   contract calls for approximately 15-second polls and bounded candidate-event batches.
+   No worker entrypoint, worker configuration, or Compose service exists today; document the
+   actual startup command/configuration when implemented. No Celery/broker or API scheduler.
+2. Discover candidate event IDs from overdue persisted HELD rows without holding reservation
+   locks. Discovery is advisory: candidates can become stale before processing. Do not filter
+   out CLOSED events; closing does not cancel or release their existing holds.
+3. For each event, open an independent READ COMMITTED transaction, SELECT the event FOR UPDATE
+   with refreshed ORM state, then sample clock_timestamp. Only after the event lock may the
+   worker call expire_due_holds and flush/commit row/counter changes atomically.
+4. Keep one event per transaction and the event-before-reservation lock order. Never reuse a
+   stale pre-lock allocation count or discovery-time clock. No independently committed counter
+   update, reservation change, or nested transaction-owning user service is permitted.
+5. Recheck the actual rows at execution time. Only due HELD rows expire. CONFIRMED and terminal
+   rows do not release again; duplicate discovery, retries, and multiple discoverers are safe.
+6. Recover by rediscovering durable database work after restart. A crash before commit rolls
+   back both row/counter changes; after commit, rediscovery must cause no duplicate release.
+   An uncertain commit can be retried through the same conditional transition.
+7. Keep lock/database waits bounded, roll back failed transactions, and use a fresh transaction
+   for subsequent work. Document retry/backoff and busy-event deferral policy, startup/shutdown,
+   and failure reporting. A temporarily unavailable database must not create partial changes
+   or an uncontrolled retry loop. Do not expose settings, credentials, cookies, or CSRF tokens.
+8. Worker downtime may delay persisted cleanup but must not weaken request-time expiration,
+   permit expired confirmation, block request reclamation, or change GETs into domain writes.
+   Preserve durable request outcomes and existing API/security/state contracts.
+
+### Required Phase 5 acceptance criteria
+
+- [ ] A real standalone worker expires due holds on an unvisited event without an HTTP trigger.
+- [ ] Downtime leaves conservative stored holds; restarting drains the backlog correctly.
+- [ ] Repeated sweeps and stale candidates do not double-release, including a candidate confirmed
+  or cancelled before the worker obtains the event lock; CLOSED-event due holds are reclaimed.
+- [ ] Independent PostgreSQL transactions/processes cover duplicate discoverers and worker races
+  with confirmation, cancellation, admission, and capacity edits in both relevant lock orders.
+- [ ] Post-lock clock sampling and exact deadline equality are tested; confirmed rows never expire.
+- [ ] Fault injection before commit rolls back all changes; after-commit retry is a no-op, and
+  real timeout/database-recovery tests verify bounded failure and continued progress.
+- [ ] Consistent SQL snapshots retain counter bounds/equality and active-user uniqueness after
+  every recovery/race scenario. Arbitrary sleeps or mocked locks do not establish correctness.
+- [ ] The complete existing suite plus new worker tests actually run against PostgreSQL. Report
+  actual counts, commands, process/pool settings, failures, and limitations; no invented metrics.
+- [ ] Relevant lint/format, migrations/contracts if affected, Compose worker startup/shutdown,
+  and retained backend/frontend smoke/regression checks pass.
+- [ ] Add `docs/phase-5-validation.md` and `docs/phase-explanations/phase-5-explanation.md` with
+  the established twelve-section structure and a clear Phase 6-8 boundary.
+- [ ] Stop for review before Phase 5 commit/push. This documentation publication authorizes
+  neither Phase 5 implementation nor future application commits.
+
+### Remaining roadmap and dependencies
 
 | Phase | Planned delivery | Depends on / evidence gate |
 | --- | --- | --- |
-| 5 | Standalone expiry sweeper and failure recovery | Phase 4 shared locked transitions; backlog drains after restart, duplicate/stale sweeps do not double-release, timeout behavior |
+| 5 (next) | Expiration & Recovery: standalone expiry sweeper and recovery | Phase 4 shared locked transitions; backlog drains after restart, duplicate/stale sweeps do not double-release, timeout behavior |
 | 6 | Redis rate limiting and short-lived public metadata cache | Correct PostgreSQL protocol first; atomic/multi-process quotas and explicit outage policy; capacity independent of cache; availability not cached |
 | 7 | Booking/organizer browser UI | Stable auth/event/reservation APIs; account flows, accessible errors, current-state refresh, retain retry keys on uncertain requests |
 | 8 | Full concurrency/failure evidence, deployment, backup/restore | Earlier gates complete; reproducible mixed load/multiple processes, persistent DB, restore exercise, accurate resume claims |
@@ -576,8 +695,9 @@ are not delivered features. Session cleanup remains a manual bounded admin comma
 
 Commands are from the repository root unless stated otherwise. They were checked against
 README, Compose/Dockerfile configuration, package scripts, CI, and prior validation evidence.
-For this handoff, Compose config/current revision and the integration command's **collection**
-were checked again (216 cases collected); the full 323-test suite was not rerun for a doc edit.
+The final Phase 4 run recorded 417 passing tests (114 unit/contract, 303 PostgreSQL); those are
+historical implementation results. This documentation-only update validates Markdown, local
+references, scope, and sensitive-information hygiene; it does not claim a new local suite run.
 Use Docker Desktop with Linux containers and Compose supporting --wait. Keep existing volumes.
 
 ### Start local development
@@ -622,7 +742,7 @@ docker compose exec -T backend python -m pip check
 
 The dedicated test role needs CREATEDB. Its provided database must use postgresql+psycopg
 and end in _test. Fixtures create `csrs_phase2_<uuid>_test` databases, migrate/reset only those,
-and remove them. That historical prefix is still used in Phase 3. Never truncate the configured
+and remove them. That historical prefix is still used through Phase 4. Never truncate the configured
 input database or point tests at development data. A missing test URL can skip local integration;
 required CI/full Docker verification must actually run them. A configured unreachable DB fails.
 Host TestClient runs previously stalled on this Windows environment; container results are decisive.
@@ -698,32 +818,40 @@ reproducible project. No secret or generated artifact should be committed.
 | --- | --- |
 | Repository | [CSRS on GitHub](https://github.com/ShreyasKowshal/Concurrency-Safe-Reservation-System) |
 | Branch | main |
-| Latest verified Phase 3 implementation commit | 48790480c9959442d1121dd85191529199960399 |
-| Commit message | feat: implement organizer event management |
-| Phase 3 change manifest | 25 files: 11 added, 14 modified; 3,143 insertions, 94 deletions |
-| Latest full local tests | 323 passed in 26.81s, exit 0, no failures/skips; 107 unit/contract + 216 PostgreSQL |
-| Other Phase 3 checks | Ruff lint/42 formatted files, dependencies, migrations, TypeScript/build, Compose, runtime-contract equality, 31 proxy smoke and six localhost checks passed |
-| Implemented API | Version 0.3.0; 14 paths, 16 operations; no reservation/availability/dashboard routes |
-| Git before writing this handoff | Clean; local HEAD and fetched origin/main matched the Phase 3 commit, divergence 0/0 |
-| Documentation change | Only docs/PROJECT_HANDOFF.md is intended; creates a separate documentation commit after this snapshot |
+| Latest verified implementation commit | 50cca058987a72adf4ac575b28cdbdc4840ca685 |
+| Commit message | feat: implement concurrency-safe reservations |
+| Phase 4 change manifest | 32 files: 11 added, 21 modified; 3,492 insertions, 353 deletions |
+| Latest full local tests | 417 passed in 58.53s, exit 0, no failures/skips; 114 unit/contract + 303 PostgreSQL |
+| Final audit follow-up | One MEDIUM test-coverage finding resolved; strengthened clock test passed 10/10 repetitions and rejected an in-memory now() mutation |
+| Other Phase 4 checks | Ruff/51 formatted files, dependencies, migrations, TypeScript/build, Compose, contract equality, 33 proxy smoke and six localhost checks passed; see Phase 4 report for check provenance |
+| Implemented API | Version 0.4.0; 20 paths, 22 operations; reservations and availability included, organizer dashboard absent |
+| Git before this documentation update | Clean; local HEAD, origin/main, and live remote main matched the Phase 4 commit |
+| GitHub Actions for Phase 4 implementation | Foundation CI completed/success; backend, frontend, compose all green |
+| Next application phase | Phase 5 - Expiration & Recovery; requirements in I, not started |
+| Documentation change | Only docs/PROJECT_HANDOFF.md; authorized separate documentation commit after this implementation snapshot |
 
-The [Phase 3 Foundation CI run](https://github.com/ShreyasKowshal/Concurrency-Safe-Reservation-System/actions/runs/40217964232)
-was independently queried for the exact Phase 3 SHA on 2026-10-25: **completed/success**.
+The [Phase 4 Foundation CI run](https://github.com/ShreyasKowshal/Concurrency-Safe-Reservation-System/actions/runs/40235993807)
+was queried again for exact SHA `50cca058987a72adf4ac575b28cdbdc4840ca685` on 2026-10-26:
+**completed/success**.
 Jobs backend, frontend, and compose all completed successfully. The workflow is
 `.github/workflows/ci.yml`, triggered on push/PR. It runs real PostgreSQL tests, frontend build,
 Docker builds, migrations, and health/proxy smoke. It performs no production deployment.
 
-Creating this file changes the working tree to one new handoff file before its authorized
-documentation commit. A fresh conversation must inspect Git and current CI again: the latest
-repository HEAD after handoff will differ from the **Phase 3 implementation** SHA above.
-The green run cited here belongs to Phase 3, not to the later handoff commit or future Phase 4.
-Use the task's final Git report for the handoff commit hash and post-push working-tree state.
+Updating this file changes only the existing handoff document before its authorized
+documentation commit, `docs: update project handoff after phase 4`. A fresh conversation must
+inspect Git and current CI again: repository HEAD after that commit will differ from the
+**Phase 4 implementation** SHA above. The green run cited here belongs to the implementation;
+the new documentation commit's hash, remote equality, working-tree state, and separate CI
+result are reported in this task's final response. Do not attribute a green run to another SHA.
 
-No known Phase 3 blocker remains. Current limitations include conservative capacity edits,
-no reservation service/worker/Redis integration/business forms, no scheduled session cleanup,
-no account recovery/verification/MFA, and no cloud deployment. Readiness proves basic database
-connectivity, not migration currency. XSS can defeat CSRF; deployment hardening is still future.
-No throughput or completed reservation-correctness metric has been achieved by the current code.
+No known Phase 4 correctness blocker or unresolved audit finding remains. Current limitations:
+quiet events retain overdue persisted holds until request cleanup or the planned sweeper;
+idempotency records have no retention cleanup; hot-event writes serialize; and commit-loss
+tests use controlled simulation. There is no worker, Redis integration, organizer dashboard,
+business UI, scheduled session cleanup, account recovery/verification/MFA, or cloud deployment.
+Readiness proves connectivity, not migration currency. XSS can defeat CSRF; deployment hardening
+is future work. Tested reservation correctness is established for the documented scenarios;
+no production throughput, latency, or Phase 8 mixed-load claim is made.
 
 ## L. Development workflow for the next conversation
 
@@ -744,7 +872,7 @@ Preserve the user's review gate exactly:
 Do not rewrite unrelated working code, create unnecessary migrations/services, silently
 weaken tests, force-push, overwrite remote history, or delete local PostgreSQL volumes.
 If a tool/dependency/check is unavailable, report the actual blocker rather than inventing
-success. The approval to publish this handoff is not approval to implement or commit Phase 4.
+success. The approval to publish this handoff is not approval to implement or commit Phase 5.
 
 ## M. Documentation conventions and reading order
 
@@ -767,16 +895,19 @@ No real credentials, cookie/CSRF values, database dumps, or fabricated performan
 
 Recommended next-conversation reading order:
 
-1. This handoff, especially H and L; then Git status/log and the current CI result.
+1. This handoff, especially implemented protocol H, next-phase requirements I, and workflow L;
+   then Git status/log and the current CI result.
 2. [Concurrency protocol](concurrency.md), [API contract](contracts/api.md),
    [database design](database.md), [security](security.md), and [decisions](decisions.md).
-3. [Phase 3 validation](phase-3-validation.md) and
-   [Phase 3 explanation](phase-explanations/phase-3-explanation.md), plus earlier phase reports
+3. [Phase 4 validation](phase-4-validation.md), especially its final audit-follow-up section,
+   and [Phase 4 explanation](phase-explanations/phase-4-explanation.md), plus earlier phase reports
    linked in D when their historical detail is needed.
-4. Actual models, event/auth service transaction ownership, route/HTTP guards, OpenAPI exporter,
-   PostgreSQL fixtures, and existing event transaction tests listed in C.
+4. Actual reservation service/shared expiration helper, event/auth transaction ownership,
+   models, route/HTTP guards, PostgreSQL fixtures, reservation/event race and fault tests, and
+   strengthened clock test listed in C. Plan the worker from that existing implementation.
 5. [README](../README.md), [Compose](../compose.yaml), and
    [CI workflow](../.github/workflows/ci.yml) before running the environment.
 
-The next implementation is Phase 4 after a new explicit request. Nothing in this handoff
-implements reservations or removes the requirement to stop for review before its commit.
+The next implementation is **Phase 5 - Expiration & Recovery**, after a new explicit request.
+This documentation-only update implements no application functionality and does not remove
+the requirement to stop for review before any future phase's commit/push.
