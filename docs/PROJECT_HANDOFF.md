@@ -1,20 +1,22 @@
-# CSRS project handoff: continue with Phase 6
+# CSRS project handoff: continue with Phase 7
 
-**Snapshot, 2026-10-26:** Phases 1-5 are implemented, reviewed, committed, and pushed to main.
-The latest verified implementation commit is `03ea3108999f051887e6788e26ed9342e08a7e1b`
-(`feat: add concurrency-safe expiration worker`). Its
-[GitHub Actions run](https://github.com/ShreyasKowshal/Concurrency-Safe-Reservation-System/actions/runs/40293310608)
-is **green**. The final local suite passed **474 tests: 130 unit/contract and 344 real
-PostgreSQL integration**. **Phase 6 - Redis Integration - is next and has not started.**
-This documentation-only update prepares that phase; it implements no application change.
+**Snapshot, 2026-10-26:** Phases 1-6 are implemented, reviewed, committed, and pushed to main.
+Phase 6 implementation commit `7d7c705b438437a2a63ccd7d9fbffe4d54628f17` was followed
+by the CI readiness correction `d188a7e6279818a8e702bbd682fcd97765a8cd34`. The
+[corrected exact-commit GitHub Actions run](https://github.com/ShreyasKowshal/Concurrency-Safe-Reservation-System/actions/runs/40349763474)
+is **green**: backend, frontend, and Compose passed, including Redis available, outage, and
+recovery smoke. The final Phase 6 source suite passed **540 tests: 153 unit/contract and 387
+real PostgreSQL/Redis integration**, including 66 new Phase 6 tests.
+**Phase 7 - Full Frontend - is
+next and has not started.** This documentation-only update prepares that phase.
 
 Repository: [Concurrency-Safe-Reservation-System](https://github.com/ShreyasKowshal/Concurrency-Safe-Reservation-System).
 Local workspace: `C:\Users\ASUS\OneDrive\Desktop\csrs`.
 
 Before editing in a new conversation, read this document, inspect Git status, and read the
 current source and contracts. This is a snapshot, not a replacement for the implementation.
-Some older reports, explanations, and the README retain pre-commit "pending review" wording. Those are
-historical review records; they do not mean approved Phases 2-5 must be implemented again.
+Some older reports and explanations retain pre-commit "pending review" wording. Those are
+historical review records; they do not mean approved Phases 2-6 must be implemented again.
 Do not rewrite their results to imply tests ran at a later commit.
 
 ## A. Project overview
@@ -34,8 +36,9 @@ Currently working: health checks/UI, configuration, PostgreSQL schema/migrations
 registration/login/logout/current user, sessions/CSRF/roles, organizer event-management APIs,
 public discovery/availability, one-seat holds, confirmation/cancellation, owner reservation
 detail/history, durable idempotency, request-time expiration, and an independently running
-PostgreSQL expiration worker. **Redis integration, organizer dashboard, business UI, and
-production deployment remain unimplemented.** The 50/100-attempt tests establish their
+PostgreSQL expiration worker, atomic Redis quotas, and public event-detail metadata caching.
+**Organizer reservation dashboard, business UI, and production deployment remain planned.**
+The 50/100-attempt tests establish their
 documented correctness cases; they
 are not production throughput or latency benchmarks.
 
@@ -52,13 +55,13 @@ infrastructure under a routine implementation request.
 | PostgreSQL 17 | Durable source of truth for identity, events, capacity, reservations, and idempotency |
 | SQLAlchemy 2.0, Psycopg 3 | Synchronous sessions, explicit transactions, connection pool, SQL, and PostgreSQL driver |
 | Alembic | Explicit schema migrations; head 0002_worker_expiry adds an ordered partial expiration index |
-| Redis 7.4 | Running in Compose with persistence disabled; no application Redis client, limiter, cache, or session store |
+| Redis 7.4, redis-py 8.1 | Ephemeral, shared API rate limits and public detail metadata cache; never a reservation, session, or idempotency authority |
 | argon2-cffi, email-validator | Argon2id passwords and canonical validated ASCII email addresses |
 | Database-backed opaque sessions | Random cookie secrets, server-side expiry/revocation, independent synchronizer CSRF tokens; no JWT/OAuth |
 | Pytest, FastAPI TestClient, HTTPX2 | Unit/contract tests, real PostgreSQL integration, controlled concurrency/failure tests |
 | Ruff | Backend lint and format checks |
-| Docker / Docker Compose | Local development, separate disposable PostgreSQL test service, and opt-in worker profile |
-| GitHub Actions | CI on pushes/PRs: backend, frontend, Compose including worker smoke; no automatic production deployment |
+| Docker / Docker Compose | Local development, disposable PostgreSQL/Redis test services, and opt-in worker profile |
+| GitHub Actions | CI on pushes/PRs: backend, frontend, Compose, worker and Redis outage/recovery smoke; no production deployment |
 
 Dependency constraints live in `backend/pyproject.toml`; resolved development constraints are
 in `backend/requirements-dev.lock`. Frontend reproducibility uses `frontend/package-lock.json`
@@ -80,17 +83,17 @@ PostgreSQL at READ COMMITTED isolation. Each request/worker transaction must own
 database session; never share one concurrently. A database Session is distinct from a
 user's security session row. No generic repository framework is needed.
 
-For an existing-event mutation, the current flow is: validate HTTP input, begin a service
-transaction, validate organizer/session/CSRF, lock the owned event, recheck authorization
-after any wait, validate/change the event, flush, commit, then respond. A flush sends SQL;
-it does not commit. Reservation commands first claim a user-scoped idempotency key, then lock
-the event, refresh authorization, sample database time, clean due holds, and commit the
-transition/counter/outcome together. No Redis call, remote I/O, or password work belongs inside
-the event lock.
+For an existing-event mutation, the current flow is: validate HTTP input; check session,
+CSRF, and role in a short SQL preflight; end that transaction; check the Redis user quota;
+then begin the original service transaction. The service revalidates authorization, locks
+the owned event, and rechecks after any wait. Reservation commands first claim a user-scoped
+idempotency key, then lock the event, refresh authorization, sample database time, clean due
+holds, and commit the transition/counter/outcome together. A flush sends SQL; it does not
+commit. Redis work stays outside the event lock and does not authorize or complete a command.
 
-See the existing [architecture and four diagrams](architecture.md), especially the system,
+See the existing [architecture and five diagrams](architecture.md), especially the system,
 application, reservation transaction, and worker lifecycle diagrams. Their labels distinguish
-implemented Phase 1-5 services from planned Redis integration and business UI.
+implemented Phase 1-6 services from planned business UI.
 Detailed authority is in
 [API contracts](contracts/api.md), [concurrency](concurrency.md), [database](database.md),
 [security](security.md), [decisions](decisions.md), and [phase gates](phases.md).
@@ -108,6 +111,9 @@ Detailed authority is in
 | `backend/src/csrs/api/events.py` | Public and organizer event routers |
 | `backend/src/csrs/api/reservations.py` | Hold/confirm/cancel, private detail/history, advisory availability routes |
 | `backend/src/csrs/api/openapi.py` | Cookie/CSRF security declarations; preserves path/query parameters |
+| `backend/src/csrs/api/redis_dependencies.py` | Route-level Redis support/quota dependencies |
+| `backend/src/csrs/redis_support.py` | Atomic fixed-window quotas, validated metadata cache, failure policy, structured support logs |
+| `backend/src/csrs/redis_connection.py` | Bounded Redis DNS/TCP caller waits and connection behavior |
 | `backend/src/csrs/auth/` | Crypto, schemas, HTTP guards, service transactions, dependencies, admin commands |
 | `backend/src/csrs/events/` | Event schemas, transaction services, errors, scoped pagination |
 | `backend/src/csrs/reservations/service.py` | Durable claim/replay, event-locked reservation transactions, supporting reads |
@@ -121,22 +127,24 @@ Detailed authority is in
 | `backend/scripts/export_health_contract.py` | Intentionally refreshes complete and health OpenAPI snapshots |
 | `backend/scripts/smoke_reservations.py` | Local live HTTP verification with generated records and scoped cleanup |
 | `backend/scripts/smoke_worker.py` | Local backlog, worker restart, and live API smoke verification |
+| `backend/scripts/smoke_redis.py` | Local available/outage/recovery API and worker smoke verification |
 | `backend/tests/unit/` | Config, health, crypto, event input/cursor, runtime-contract checks |
 | `backend/tests/integration/` | Real PostgreSQL auth, events, schema, migrations, and concurrency/failure cases |
 | `backend/tests/integration/test_reservations.py` | Reservation HTTP/state/deadline behavior and SQL invariants |
 | `backend/tests/integration/test_reservation_transactions.py` | Two-process contention, controlled lock waits, strengthened clock test, faults |
 | `backend/tests/integration/test_worker.py` | Real PostgreSQL sweeps, bounds, races, recovery, and invariant checks |
 | `backend/tests/integration/test_worker_processes.py` | Independent worker process contention, crash, outage, shutdown/restart tests |
+| `backend/tests/unit/test_redis_runtime.py`, `backend/tests/integration/test_redis_support.py` | Redis lifecycle, real PostgreSQL/Redis, API-process, cache, and outage checks |
 | `frontend/src/App.tsx` | Health screen; latest change is Phase 4 label |
 | `frontend/src/api/health.ts` | Validated readiness fetch and frontend error classification |
 | `frontend/vite.config.ts` | Origin-preserving /api proxy |
 | `compose.yaml`, `backend/Dockerfile`, `frontend/Dockerfile` | Development/test containers, opt-in worker, ports, volumes, startup |
-| `.github/workflows/ci.yml` | Backend/PostgreSQL, frontend, Compose, and worker smoke CI |
+| `.github/workflows/ci.yml` | Backend/PostgreSQL/Redis, frontend, Compose, worker and Redis smoke CI |
 | `.github/dependabot.yml` | Dependency-update proposals; does not automatically merge changes |
 
 The worker reuses the Phase 4 expiration transition under the same event-first lock protocol.
-It runs as `python -m csrs.worker` or the opt-in Compose `worker` service. Redis is still
-provisioned only; no application Redis client, limiter, or cache exists.
+It runs as `python -m csrs.worker` or the opt-in Compose `worker` service and does not use Redis.
+The API owns one lazy Redis pool per lifespan for quotas and public detail metadata only.
 
 ## D. Completed phases and their evidence
 
@@ -150,6 +158,7 @@ suite retains earlier behaviors; counts must not be added together as independen
 | 3 | Public/owner event reads, draft create/edit/capacity/publish/close, event locks | 323 passed: 107 unit/contract + 216 PostgreSQL; exit 0 | [Validation](phase-3-validation.md), [explanation](phase-explanations/phase-3-explanation.md) |
 | 4 | Holds, confirmation/cancellation, request-time expiry, durable idempotency, private history/detail, public availability | 417 passed: 114 unit/contract + 303 PostgreSQL; exit 0 | [Validation](phase-4-validation.md), [explanation](phase-explanations/phase-4-explanation.md) |
 | 5 | Independent PostgreSQL expiry worker, bounded backlog catch-up, multi-worker/restart recovery, ordered index | 474 passed: 130 unit/contract + 344 PostgreSQL; exit 0 | [Validation](phase-5-validation.md), [explanation](phase-explanations/phase-5-explanation.md) |
+| 6 | Atomic multi-process Redis quotas, public detail cache, outage policies, bounded connection behavior | 540 passed: 153 unit/contract + 387 PostgreSQL/Redis integration; exit 0 | [Validation](phase-6-validation.md), [explanation](phase-explanations/phase-6-explanation.md) |
 
 ### Phase 1: foundation
 
@@ -175,7 +184,8 @@ Public registration cannot elevate privileges. Session rotation and locked reche
 competing use of one consumed pre-session. Migration/constraint tests use actual PostgreSQL.
 
 No event or reservation command existed yet. Password recovery, email verification, MFA,
-auth screens, rate limiting, and scheduled maintenance remain absent today. The implementation
+auth screens and scheduled maintenance remain absent today; rate limiting arrived in Phase 6.
+The implementation
 commit is `4b7aaa8d4628b55b122692a62f0ff48b61d87410`.
 
 ### Phase 3: event management
@@ -274,6 +284,37 @@ and a clean working tree. The exact-commit
 [GitHub Actions run](https://github.com/ShreyasKowshal/Concurrency-Safe-Reservation-System/actions/runs/40293310608)
 completed successfully; backend, frontend, and Compose jobs passed, including worker smoke.
 These are Phase 5 implementation results, not fresh executions for this handoff edit.
+
+### Phase 6: Redis integration
+
+Implemented atomic fixed-window quotas shared across API processes and a short-lived cache
+for **public event detail metadata only**. PostgreSQL still owns sessions, authorization,
+reservation state, capacity, deadlines, idempotency, and expiry recovery. Redis holds no seat
+counter, reservation transition, private reservation, CSRF secret, or durable business outcome.
+There was no PostgreSQL schema or migration change; Alembic head remains `0002_worker_expiry`.
+API/package version remains 0.4.0 with 20 paths and 22 operations. Intentional OpenAPI changes
+document 429 and public detail caching.
+
+The self-audit found zero BLOCKER/HIGH issues. Its MEDIUM unbounded OS DNS caller wait was
+resolved with one shared pending lookup per API client and bounded caller waits. Three LOW
+findings were resolved: requiring a cache schema version, disposing the SQL engine even if
+Redis cleanup fails, and preserving valid SQL detail output beyond cache input limits.
+Focused real Redis/PostgreSQL, fault, and repeated race tests cover those fixes. The full
+Phase 6 suite passed **540/540**: 153 unit/contract and 387 integration, including 43 new
+real Redis/PostgreSQL integration cases and 23 new unit cases. See
+[Phase 6 validation](phase-6-validation.md) and
+[explanation](phase-explanations/phase-6-explanation.md) for test commands and limits.
+
+Implementation commit `7d7c705b438437a2a63ccd7d9fbffe4d54628f17` changed 32 files:
+8 added and 24 modified. Its first CI run exposed a startup-probe race after backend
+recreation: curl exited on a transient empty reply before it could retry. The one-file
+correction `d188a7e6279818a8e702bbd682fcd97765a8cd34` adds bounded retries for those
+errors while still requiring a real 200 response, plus Compose/backend diagnostics on failure.
+The [corrected Foundation CI run](https://github.com/ShreyasKowshal/Concurrency-Safe-Reservation-System/actions/runs/40349763474)
+completed successfully for the correction SHA: backend, frontend, and Compose passed. Hosted
+Compose reported **540 passed**, worker backlog/restart smoke, and three Redis modes:
+available, outage, recovered. Each mode reported 13 HTTP checks, one worker expiration, and
+zero invariant mismatches. The Phase 6 application source was unchanged by the CI correction.
 
 ## E. Current database design
 
@@ -537,8 +578,8 @@ of the old hold TTL. Do not add event-wide cancellation, quantities, seat maps, 
 The reservation service implements this single-event user-command protocol:
 
 1. Authenticate and validate JSON, source/CSRF, request shape, and ownership context.
-   A future Phase 6 rate limiter runs outside the capacity transaction; do not implement
-   Redis merely because it appears in this later protocol.
+   The Phase 6 Redis quota check runs after a short SQL auth/CSRF/role preflight and outside
+   the capacity transaction. The original service repeats authorization inside its transaction.
 2. Begin one READ COMMITTED transaction and claim the user-scoped idempotency key.
    Session/CSRF and current authorization must also be valid inside the mutation service.
 3. After any claim wait, refresh session/CSRF/authorization before replay. For a new claim,
@@ -584,7 +625,7 @@ throughput claims or redesigning inventory before evidence exists.
 - Replay the original status/body with `Idempotency-Replayed: true`; new execution uses false.
   Do not re-execute a successful transition just to obtain current status. The client fetches
   current resource state afterward because the original response can be stale.
-- Authentication, CSRF, ownership, and later throttling apply before replay. Idempotency is
+- Authentication, CSRF, ownership, and Phase 6 throttling apply before replay. Idempotency is
   neither authentication nor CSRF protection. Use no-store for authenticated/idempotent results.
 - Store completed business conflicts, including EVENT_FULL/HOLD_EXPIRED. A later retry of
   that same key still returns the original result even if seats become available. New intent
@@ -604,7 +645,8 @@ HOLD_EXPIRED, INVALID_RESERVATION_STATE, CANCELLATION_CLOSED, CAPACITY_BELOW_ALL
 IDEMPOTENCY_KEY_REUSED, and TEMPORARILY_UNAVAILABLE, plus existing security/validation errors.
 Normal business conflicts use 409; missing/unusable auth 401, role/CSRF 403, unavailable/foreign
 private resource 404, unsupported JSON media type 415, invalid fields 422, transient DB/lock 503.
-429/RATE_LIMITED belongs to the later limiter phase; it is not implemented today.
+Phase 6 implements 429/RATE_LIMITED with `Retry-After` when a quota is exceeded. A required
+Redis limiter outage produces a controlled 503; optional quota failures continue through SQL.
 
 ### H6. Request-time expiration and Phase 5 worker
 
@@ -647,7 +689,8 @@ Fault tests cover row/counter/outcome writes, before commit, response loss after
 both committed/uncommitted simulations of uncertain commit outcomes. Real statement timeout
 rolls back and permits same-key retry. Network loss during COMMIT is simulated, not a physical
 connection-cut experiment. Worker restart/stale sweep/duplicate sweep recovery was added in
-Phase 5; Redis outage/rate-limit behavior belongs to Phase 6 and has not been tested yet.
+Phase 5. Phase 6 separately tests Redis quotas/cache, independent API processes, SQL
+invariants during outage, and live stop/restart/recovery without weakening these races.
 
 Phase 4's implemented acceptance gate is complete:
 
@@ -665,104 +708,165 @@ Phase 4's implemented acceptance gate is complete:
   changed-file manifest, and the then-deferred Phase 5-8 work.
 - [x] Independent audit completed; the MEDIUM clock-test finding resolved and mutation-checked.
 - [x] User approved publication; implementation committed/pushed with matching hashes and green CI.
-- [x] At Phase 4 completion, the worker and later phases remained deferred; the worker was
-  subsequently delivered in Phase 5. Redis integration, full UI, payments, and deployment
-  remain deferred.
+- [x] At Phase 4 completion, the worker and later phases remained deferred. The worker was
+  delivered in Phase 5 and Redis support in Phase 6. Full UI and deployment remain planned;
+  payments are outside the current roadmap.
 
-## I. Next phase: Phase 6 - Redis Integration
+### H8. Implemented Phase 6 Redis support
 
-**Planned only; not implemented or started by this handoff update.** Start only after a new
-explicit implementation request and preserve the verified Phase 5 PostgreSQL behavior.
-Redis is already provisioned in local Compose, but no application Redis client, limiter, or
-metadata cache exists. Phase 6 adds rate limiting and short-lived public event metadata
-caching, not a new reservation authority.
+The API constructs one lazy redis-py pool per lifespan; startup and PostgreSQL readiness do
+not require a Redis connection. A Lua operation atomically checks/increments each fixed
+window across API processes. The window starts on its first accepted request; rejection does
+not extend it. Quota identity uses the connection peer or the current authenticated user,
+hashed in namespaced keys. Forwarded identity headers are ignored; supported Uvicorn commands
+disable proxy-header trust. Shared proxies/NAT share a peer quota until a separately reviewed
+trusted-proxy deployment design exists.
 
-### Dependencies and correctness boundary
+| Scope | Default per 60 seconds | Identity | Redis unavailable |
+| --- | --- | --- | --- |
+| New anonymous session bootstrap | 30 | Connection peer | Controlled 503, Retry-After: 1; no new row |
+| Login/register combined | 10 | Connection peer | Controlled 503, Retry-After: 1 |
+| Public event list/detail/availability combined | 120 | Connection peer | Continue through PostgreSQL |
+| Hold/confirm/cancel/replay and organizer mutations combined | 60 | Authenticated user | Continue through original PostgreSQL transaction |
 
-- Build on the completed Phase 5 worker, Phase 4 reservation/idempotency protocol, existing
-  session/CSRF guards, event/public read contracts, and 474-case regression suite. Read
-  [phase gates](phases.md), [security](security.md), [concurrency](concurrency.md), and the
-  [API contract](contracts/api.md) before changing the request path.
-- PostgreSQL remains authoritative for reservation state, capacity, transactions, deadlines,
-  idempotency, and worker recovery. Redis loss, eviction, restart, or stale cache contents
-  must never grant a seat, confirm an expired hold, double-release capacity, or fabricate a
-  completed idempotent response. Keep the event-row lock and post-lock database time.
-- Place quota checks outside the event-lock business transaction. Keep authentication,
-  trusted source/CSRF, ownership, and idempotent replay protections in force; throttling
-  does not turn a rejected request into a stored business outcome. Do not add Redis I/O while
-  holding an event lock or turn it into a distributed booking lock.
-- Existing public availability is an advisory PostgreSQL snapshot and must **not** be cached
-  as admission authority. Private/authenticated responses, CSRF tokens, sessions, and
-  idempotency outcomes must not be stored in the public metadata cache. Public metadata
-  caching must not make drafts/closed/private events visible.
+A real quota exceedance returns 429 `RATE_LIMITED` with a rounded-up positive `Retry-After`.
+Valid existing CSRF-token retrieval, logout, health, current-user/private reservation/history,
+and organizer reads are unthrottled. A required auth quota failure never creates a new
+anonymous session. Mutation routes finish a short SQL auth/CSRF/role preflight before Redis;
+the original business transaction rechecks those guards after any waits. Quota rejection is
+not stored as an idempotent booking outcome. Redis calls never hold an event-row lock.
 
-### Planned Phase 6 requirements
+Only `GET /api/v1/events/{event_id}` may use the metadata cache. It stores a versioned,
+validated public DTO under a namespace/environment/event key for at most 15 seconds by
+default. Every hit first checks the event's current PUBLISHED visibility in PostgreSQL;
+draft, closed, and missing events remain unavailable. A miss or malformed/wrong-version/
+oversized entry loads SQL detail. Public lists and availability always use SQL, and the
+cache never includes live allocations, private state, or durable command outcomes.
+Edit/capacity/publish/close invalidation runs after commit. An older in-flight fill or
+failed invalidation can leave public metadata stale until its original absolute expiry;
+neither can authorize a reservation. Hits do not renew TTL, and late fills are skipped.
 
-1. Define and document quota scope, windows, thresholds, client identity, trusted-proxy
-   handling, and which anonymous/authenticated routes are limited. Include anonymous CSRF
-   bootstrap/session creation, whose durable rows currently have no scheduled purge.
-   Apply atomic quota operations that work across independent API processes; do not rely on
-   process-local counters or check-then-increment races.
-2. Preserve the documented `429 RATE_LIMITED` response with `Retry-After` when a quota is
-   exceeded. Treat 429 and transient limiter errors as noncompleted reservation outcomes:
-   retries use the same user key where applicable. Do not weaken registration/login/CSRF,
-   authorization, owner rechecks, or current API response contracts. Update OpenAPI only
-   for intentional implemented behavior and verify snapshot equality.
-3. Specify and test an explicit Redis-unavailable policy for each limiter and cache use.
-   The API must remain capacity-correct during outage and restart. Avoid unbounded waits,
-   accidental unlimited anonymous session creation, and misleading successful cache reads.
-   Document whether a route fails closed or uses a bounded fallback; do not infer policy
-   from Redis health alone.
-4. Cache only short-lived public event metadata where useful. Define key scope, TTL, and
-   invalidation/refresh on edit, publish, and close, while keeping access filters and
-   current-state checks. Do not cache availability, live seat counts, private organizer
-   state, or any reservation/idempotency data. Redis cache misses/errors must use the
-   documented PostgreSQL path or controlled degraded response.
-5. Add configuration, dependency/runtime checks, operational documentation, and focused
-   tests without disturbing the Phase 5 worker. No new database schema or other service
-   is presumed necessary; justify any migration or contract change with evidence.
+Defaults: cache enabled with TTL 15 seconds (range 1-60); rate limits enabled with a
+60-second window (range 1-3600); combined DNS/TCP caller budget 0.2 seconds and socket
+timeout 0.2 seconds (each range 0.05-2); pool maximum 10 (range 1-40), no automatic
+Redis command retries. One pending OS DNS lookup is shared by an API client; callers and
+shutdown remain bounded even if that lookup itself cannot be cancelled. Redis restart
+discards ephemeral quotas/cache. See [Phase 6 validation](phase-6-validation.md) and
+[security](security.md) for exact settings and failure policies.
 
-### Required Phase 6 acceptance criteria
+## I. Next phase: Phase 7 - Full Frontend
 
-- [ ] Atomic quotas are enforced across multiple independent API processes, with tested
-  boundaries, expiry/window behavior, identity scoping, and `Retry-After`/429 contracts.
-- [ ] Auth, CSRF, source, ownership, replay, and post-lock checks still apply as documented;
-  limiter failures do not persist pending/completed reservation claims or partial changes.
-- [ ] Redis outage/restart and recovery follow the documented route-specific policy with
-  bounded waits, safe anonymous bootstrap behavior, and no reservation correctness loss.
-- [ ] Public metadata cache TTL/invalidation and publication visibility are tested; stale
-  cache entries never authorize capacity or expose private data. Availability remains
-  uncached and advisory.
-- [ ] PostgreSQL race/invariant tests still prove counter bounds/equality, active-user
-  uniqueness, exact deadlines, worker/API coordination, and idempotency under separate
-  connections. Test rate limiting separately so it cannot hide reservation races.
-- [ ] Full backend/PostgreSQL regressions, API contract checks, lint/format, frontend build,
-  Compose and live limiter/cache/outage smoke checks pass with actual counts and commands.
-  Update the Phase 6 validation/explanation and disclose any limits or failures.
-- [ ] Stop for external review before any Phase 6 commit/push; this handoff publication
-  authorizes no Phase 6 implementation or deployment.
+**Planned only; no Phase 7 implementation has started.** The current React/TypeScript/Vite
+frontend displays PostgreSQL/API health and a retry button. It has no account, event, booking,
+or organizer screens, router, business API client, or frontend test framework. Build the
+browser experience on the already implemented API, and keep PostgreSQL as the sole booking
+authority. The existing backend contract is 20 paths / 22 operations at version 0.4.0.
 
-### Remaining roadmap and dependencies
+### Dependencies, screen scope, and API gaps
 
-| Phase | Planned delivery | Depends on / evidence gate |
+- Read [phase gates](phases.md), [API contract](contracts/api.md), its
+  [OpenAPI snapshot](contracts/api.openapi.yaml), [security](security.md),
+  [concurrency](concurrency.md), and Phase 4-6 validation before implementation. Preserve
+  the current Vite origin-preserving `/api` proxy, React 19, TypeScript 5.9, and Node 24.
+  Add routing, state, or test dependencies only when their need is demonstrated.
+- Provide public event discovery with keyset pagination, published event details, and
+  advisory availability. List/detail may show fully booked or past-deadline published
+  events; only the server can decide whether a new hold is allowed. Closed/draft events
+  must not appear in public discovery. Refresh current detail/availability after actions.
+- Provide registration, login, logout, current-session restore, and role-aware navigation.
+  Registration returns a user and a fresh anonymous CSRF token; it does not log the user
+  in. Organizer status comes from `/auth/me`, never from client input.
+- Provide attendee hold, confirmation, cancellation, private reservation detail/history,
+  and clear status, deadline, and server-time displays. A browser countdown is advisory:
+  `decision_time < hold_expires_at` is enforced by PostgreSQL, and equality is expired.
+  A 200 response may arrive after a visible countdown reaches zero. Refresh the private
+  resource after replay or uncertain results; never infer a committed transition from a
+  timer or a cached public detail response.
+- Provide organizer own-event list/detail, draft creation/edit, publish, close, and separate
+  capacity edits within actual Phase 3 rules. Published start/deadline are immutable;
+  CLOSED is read-only, and closing does not cancel otherwise valid holds. Allocation and
+  ownership are server fields. A reservation dashboard for an organizer needs the
+  **planned but unregistered** `GET /api/v1/organizer/events/{event_id}/dashboard`
+  endpoint, owner-scoped pagination, and count semantics reviewed in the API contract.
+  Implement and review that minimal backend contract before building the dashboard;
+  attendee history cannot substitute for organizer bookings. Preserve booking authority
+  and lock order.
+- The reservation DTO contains `event_id` but no embedded event title/start. Public
+  detail is 404 after closure, even for a reservation owner. Plan a safe event-ID /
+  unavailable-metadata fallback or explicitly review a minimal enrichment contract; do
+  not use another organizer's private event route to fill that gap.
+
+### Browser correctness and failure handling
+
+Use cookie credentials on same-origin requests and fetch the synchronizer CSRF token before
+mutations. Keep token and pending private state in memory; do not put session cookies, CSRF
+values, passwords, or idempotency keys in localStorage, URLs, logs, or telemetry. Respect
+trusted Origin checks. Clear private state and abort/ignore stale responses on logout,
+session loss, or account change so one user's data cannot appear in another's view.
+
+Hold/confirm/cancel require a distinct `Idempotency-Key` for each new intent. Retain the
+same key, method, path, and body while retrying an uncertain outcome, including network loss
+after commit; do not mint a new key automatically. A replay can return an earlier response,
+so fetch current state afterward. After a page reload loses an in-memory pending intent,
+reconcile private detail/history before a new action. Organizer mutations do not have
+reservation idempotency semantics; handle uncertain responses by rereading owner state.
+
+Show explicit loading, empty, validation, conflict, retry, and unavailable states. Handle
+401 session loss, 403 role/CSRF, 404 inaccessible resources, 409 business/idempotency
+conflicts, 415 media type, 422 field errors, 429 `RATE_LIMITED` with `Retry-After`,
+503 transient PostgreSQL or required Redis failures, and network uncertainty. Never treat
+fail-open Redis quota behavior as a successful booking. Keep accessibility and responsive
+layout as functional requirements: keyboard navigation, visible focus, semantic labels,
+associated field errors, live status messages, adequate contrast, and no color-only status.
+
+### Phase 7 verification and acceptance criteria
+
+- [ ] Public discovery/detail/availability, registration/login/logout/session restore,
+  attendee reservation flows/history, organizer event management, and an owner-only
+  bookings dashboard work in the browser against actual API contracts. The dashboard's
+  minimal backend endpoint, pagination, counts, and authorization have separate tests.
+- [ ] CSRF/cookie and trusted-origin behavior is correct. Role and ownership checks remain
+  server-enforced; logout/account changes cannot leak stale private UI data.
+- [ ] A held countdown is advisory; exact deadline, confirmed-after-deadline replay,
+  cancelled/expired terminal states, worker delay, and closed-event history are presented
+  from current server responses without promising seats.
+- [ ] Uncertain command retries retain the same idempotency key and reconcile after replay;
+  new intents use new keys. Errors 401/403/404/409/415/422/429/503 and network loss have
+  accessible recovery paths, including `Retry-After`.
+- [ ] Responsive keyboard and screen-reader flows pass meaningful component tests and
+  browser end-to-end checks. Add the smallest suitable frontend test tooling. Include real
+  Compose PostgreSQL/Redis/worker journeys and deterministic timer/error cases; use separate
+  transactions and observable synchronization for any backend race additions.
+- [ ] Backend regression suite (currently 540), real PostgreSQL/Redis integration,
+  contracts/OpenAPI, Ruff, Alembic head/drift, frontend typecheck/build, Compose, live
+  worker/Redis smokes, and SQL counter/uniqueness reconciliation still pass. Report actual
+  counts and any check that could not run.
+- [ ] Update Phase 7 validation/explanation, architecture/contracts where behavior changes,
+  review the final manifest and limitations, then stop for external review before any
+  Phase 7 commit or push.
+
+### Remaining roadmap and boundaries
+
+| Phase | Delivery | Gate |
 | --- | --- | --- |
-| 5 (complete) | Expiration & Recovery: standalone expiry sweeper and recovery | 474-case regression suite, worker/process races, restart/backlog and outage recovery, green CI |
-| 6 (next) | Redis rate limiting and short-lived public metadata cache | Atomic/multi-process quotas and explicit outage policy; PostgreSQL capacity/idempotency authority; availability not cached |
-| 7 | Booking/organizer browser UI | Stable auth/event/reservation APIs; account flows, accessible errors, current-state refresh, retain retry keys on uncertain requests |
-| 8 | Full concurrency/failure evidence, deployment, backup/restore | Earlier gates complete; reproducible mixed load/multiple processes, persistent DB, restore exercise, accurate resume claims |
+| 5 (complete) | PostgreSQL expiration worker and recovery | 474-test historical suite, worker/race evidence, green CI |
+| 6 (complete) | Redis quotas and public detail metadata cache | 540-test suite, multi-process/outage evidence, corrected green CI |
+| 7 (next) | Full attendee and organizer browser UI | API/CSRF/retry correctness, accessibility, browser journeys, full regressions |
+| 8 (planned) | Deployment, full mixed-load evidence, backup/restore | Earlier gates complete; reproducible load and durable-data recovery evidence |
 
-The reviewed future hosting direction is a Docker web service with persistent managed
-PostgreSQL and suitable Redis/worker infrastructure. It is not deployed or purchased. Retain
-the simple monolith; do not introduce new infrastructure or paid services without authorization.
-Email verification/recovery/MFA, payments, quantities/seat maps, and event-wide cancellation
-are not delivered features. Session cleanup remains a manual bounded admin command.
+Phase 8 hosting direction is a Docker web service with persistent managed PostgreSQL plus
+appropriate Redis and worker infrastructure. Nothing is deployed or purchased. Keep the
+monolith. Phase 7 excludes payments, quantities/seat maps, event-wide cancellation, Redis
+inventory or locks, account recovery/verification/MFA, and production infrastructure.
+Session cleanup remains a manual bounded admin command.
 
 ## J. Running and checking this repository
 
 Commands are from the repository root unless stated otherwise. They were checked against
 README, Compose/Dockerfile configuration, package scripts, CI, and prior validation evidence.
-The final Phase 5 run recorded 474 passing tests (130 unit/contract, 344 PostgreSQL); those are
-historical implementation results. This documentation-only update validates Markdown, local
+The final Phase 6 source run recorded 540 passing tests (153 unit/contract, 387 integration);
+the corrected hosted Compose run also passed 540. These are implementation/CI results, not
+new tests run for this documentation-only update. This update validates Markdown, local
 references, scope, and sensitive-information hygiene; it does not claim a new local suite run.
 Use Docker Desktop with Linux containers and Compose supporting --wait. Keep existing volumes.
 
@@ -799,7 +903,8 @@ HTTP health endpoint means progress should be checked in logs and committed data
 The backend needs migrations even if readiness passes. Settings have no implicit .env search;
 Compose injects it and supplies service-name connection URLs. Host Uvicorn instructions in
 README use explicit --env-file .env. Never send database settings through `VITE_*` variables.
-Ports bind to 127.0.0.1: frontend 5173, API 8000, PostgreSQL 5432, Redis 6379; test PG is 5433.
+Ports bind to 127.0.0.1: frontend 5173, API 8000, PostgreSQL 5432, Redis 6379; test PostgreSQL
+is 5433 and test Redis is 6380. The dedicated test Redis uses logical database 15.
 Development PG uses postgres_data, tests use separate temporary storage. Frontend has no
 Docker health probe: verify HTTP, not just Compose's generic running/healthy wording.
 
@@ -824,7 +929,7 @@ docker compose exec -T backend python -m pip check
 
 The dedicated test role needs CREATEDB. Its provided database must use postgresql+psycopg
 and end in _test. Fixtures create `csrs_phase2_<uuid>_test` databases, migrate/reset only those,
-and remove them. That historical prefix is still used through Phase 5. Never truncate the configured
+and remove them. That historical prefix is still used through Phase 6. Never truncate the configured
 input database or point tests at development data. A missing test URL can skip local integration;
 required CI/full Docker verification must actually run them. A configured unreachable DB fails.
 Host TestClient runs previously stalled on this Windows environment; container results are decisive.
@@ -843,7 +948,10 @@ docker compose exec -T redis redis-cli ping
 Head/current should be 0002_worker_expiry; check reports
 no new operations when schema/models match. Never downgrade development data for a test.
 Frontend build already includes typecheck; there is no frontend unit-test/ESLint framework.
-Redis PONG is service health, not proof of an application Redis integration.
+Redis PONG is only service health. The Phase 6 real Redis/PostgreSQL tests and live smoke
+exercise the limiter, metadata cache, outage, cold API startup, worker independence, and recovery.
+The smoke sequence is documented in [Phase 6 validation](phase-6-validation.md#live-outagerecovery-reproduction).
+Host Uvicorn and Compose disable proxy-header trust, preserving peer-based quota identity.
 
 - UI: [http://localhost:5173/](http://localhost:5173/), currently health only.
 - API docs: [http://localhost:8000/docs](http://localhost:8000/docs).
@@ -899,45 +1007,51 @@ reproducible project. No secret or generated artifact should be committed.
 
 | Item | Verified snapshot |
 | --- | --- |
-| Repository | [CSRS on GitHub](https://github.com/ShreyasKowshal/Concurrency-Safe-Reservation-System) |
-| Branch | main |
-| Latest verified implementation commit | 03ea3108999f051887e6788e26ed9342e08a7e1b |
-| Commit message | feat: add concurrency-safe expiration worker |
-| Phase 5 change manifest | 24 files: 8 added, 16 modified; see [manifest](phase-5-validation.md#changed-file-manifest) |
-| Latest full local tests | 474 passed in 94.13s, exit 0, no failures/skips; 130 unit/contract + 344 PostgreSQL |
-| Final audit follow-up | Zero BLOCKER/HIGH; MEDIUM catch-up pacing and LOW two-process event-lock contention test both resolved, with repeated targeted checks |
-| Other Phase 5 checks | Ruff, dependencies, Alembic 0002/head/current/drift, TypeScript/build, Compose, unchanged API contracts, live worker/API smoke, restart/backlog and SQL reconciliation passed; see Phase 5 report for provenance |
-| Implemented API | Version 0.4.0; 20 paths, 22 operations; reservations and availability included, organizer dashboard absent |
-| Git before this documentation update | Clean; local HEAD, origin/main, and live remote main matched the Phase 5 commit |
-| GitHub Actions for Phase 5 implementation | Foundation CI completed/success; backend, frontend, Compose including worker smoke all green |
-| Next application phase | Phase 6 - Redis Integration; requirements in I, not started |
-| Documentation change | Only docs/PROJECT_HANDOFF.md; authorized separate documentation commit after this implementation snapshot |
+| Repository/branch | [CSRS on GitHub](https://github.com/ShreyasKowshal/Concurrency-Safe-Reservation-System), main |
+| Phase 5 historical implementation | `03ea3108999f051887e6788e26ed9342e08a7e1b`; 474 tests; [green CI](https://github.com/ShreyasKowshal/Concurrency-Safe-Reservation-System/actions/runs/40293310608) |
+| Phase 6 implementation commit | `7d7c705b438437a2a63ccd7d9fbffe4d54628f17` — `feat: integrate Redis rate limiting and event caching` |
+| Phase 6 manifest | 32 files: 8 added, 24 modified; see [manifest](phase-6-validation.md#changed-file-manifest) |
+| CI correction commit | `d188a7e6279818a8e702bbd682fcd97765a8cd34` — `ci: harden backend readiness probe after container restart`; CI workflow only |
+| Final Phase 6 source suite | 540 passed: 153 unit/contract + 387 PostgreSQL/Redis integration; 66 new Phase 6 tests |
+| Final audit | Zero BLOCKER/HIGH; one MEDIUM and three LOW self-audit findings resolved with focused/repeated checks |
+| Corrected hosted CI | [Foundation CI](https://github.com/ShreyasKowshal/Concurrency-Safe-Reservation-System/actions/runs/40349763474) completed/success for exact correction SHA; backend, frontend, Compose green |
+| Hosted Compose evidence | 540 passed; worker smoke expired five holds; Redis available/outage/recovered each passed 13 HTTP checks, one expiry, zero counter mismatches |
+| Other checks | Ruff, Alembic 0002/head/drift, contracts, TypeScript/build, Compose, live API/worker/Redis smokes, database reconciliation; provenance in Phase 6 validation |
+| Implemented API | Version 0.4.0; 20 paths / 22 operations; organizer reservation dashboard remains unregistered |
+| Git before this documentation update | Clean; local HEAD, tracking, and live remote main all matched CI correction SHA |
+| Next application phase | Phase 7 - Full Frontend; requirements in I, not started |
+| Documentation change | Only `docs/PROJECT_HANDOFF.md`; separate authorized documentation commit and CI gate |
 
-The [Phase 5 Foundation CI run](https://github.com/ShreyasKowshal/Concurrency-Safe-Reservation-System/actions/runs/40293310608)
-was verified for exact SHA `03ea3108999f051887e6788e26ed9342e08a7e1b` on 2026-10-26:
-**completed/success**. Jobs backend, frontend, and Compose all completed successfully;
-the Compose job's worker smoke step succeeded. The workflow is
-`.github/workflows/ci.yml`, triggered on push/PR. It runs real PostgreSQL tests, frontend build,
-Docker builds, migrations, and health/proxy smoke. It performs no production deployment.
+The original [Phase 6 implementation CI run](https://github.com/ShreyasKowshal/Concurrency-Safe-Reservation-System/actions/runs/40347628733)
+failed in the Compose Redis smoke step when a new backend container briefly returned
+`curl: (52) Empty reply from server`. Backend and frontend jobs passed; Redis available mode
+passed, but outage and recovery never ran. The corrected readiness probe retries transient
+connection errors for at most 20 retries/60 seconds, limits each attempt to five seconds, and
+still requires HTTP success. On failure CI prints backend status and Compose logs. Local
+reproduction observed two empty replies followed by a real 200; persistent 503 and empty
+replies remained nonzero. Local and hosted Redis available/outage/recovery smokes then passed.
+The correction changed no application source. The corrected hosted run is green for its own
+SHA, including actual outage and recovery output.
 
-Updating this file changes only the existing handoff document before its authorized
-documentation commit, `docs: update project handoff after phase 5`. A fresh conversation must
-inspect Git and current CI again: repository HEAD after that commit will differ from the
-**Phase 5 implementation** SHA above. The green run cited here belongs to the implementation;
-the new documentation commit's hash, remote equality, working-tree state, and separate CI
-result are reported in this task's final response. Do not attribute a green run to another SHA.
+This handoff is a separate documentation update. Its commit hash, remote equality,
+working-tree state, and independent CI result belong in the final report; a green result for
+the correction commit must not be attributed to the later documentation SHA.
 
-No known Phase 5 correctness blocker or unresolved final audit finding remains. Current
-limitations: cleanup latency depends on polling, backlog, lock and database availability;
-there is no production latency/throughput SLA. Worker row limits do not bound Phase 4 API
-cleanup; a page may span several short event transactions. The index migration is ordinary
-`CREATE INDEX`, not an online production migration. There is no worker health endpoint or
-production alerting. Idempotency records have no retention cleanup; hot-event writes
-serialize; and commit-loss tests use controlled simulation. Redis integration, organizer
-dashboard, business UI, scheduled session cleanup, account recovery/verification/MFA, and
-cloud deployment remain absent. Readiness proves connectivity, not migration currency or
-worker progress. XSS can defeat CSRF; deployment hardening is future work. Tested correctness
-is established for the documented scenarios; no Phase 8 mixed-load claim is made.
+No known Phase 6 correctness blocker or unresolved self-audit finding remains. Documented
+limits: Redis restart resets quotas/cache; fixed windows can burst at boundaries; public
+reads and authenticated writes fail open on Redis outage, while new anonymous sessions and
+login/register fail closed. A shared proxy/NAT peer shares a quota. Old fills or failed
+invalidation may leave public metadata stale for at most its original TTL; publication is
+still checked in SQL. No cache stampede control, production load/latency SLA, live TLS-server
+test, Redis cluster/failover, or automated session/idempotency retention cleanup exists.
+An OS DNS lookup itself cannot be cancelled, though callers/shutdown are bounded and at
+most one lookup remains pending per API client. The worker has no health endpoint or
+production alerting; its cleanup latency depends on polling, contention, backlog, and
+database availability. Phase 5's ordered index migration was not an online production
+migration. Readiness checks PostgreSQL connectivity, not migration currency, Redis health,
+or worker progress. Organizer dashboard, business UI, account recovery/verification/MFA,
+and deployment remain planned or outside this phase. No Phase 8 mixed-load or backup/restore
+claim is made.
 
 ## L. Development workflow for the next conversation
 
@@ -958,7 +1072,7 @@ Preserve the user's review gate exactly:
 Do not rewrite unrelated working code, create unnecessary migrations/services, silently
 weaken tests, force-push, overwrite remote history, or delete local PostgreSQL volumes.
 If a tool/dependency/check is unavailable, report the actual blocker rather than inventing
-success. The approval to publish this handoff is not approval to implement or commit Phase 6.
+success. The approval to publish this handoff is not approval to implement or commit Phase 7.
 
 ## M. Documentation conventions and reading order
 
@@ -981,21 +1095,22 @@ No real credentials, cookie/CSRF values, database dumps, or fabricated performan
 
 Recommended next-conversation reading order:
 
-1. This handoff, especially implemented protocol H, next-phase requirements I, and workflow L;
+1. This handoff, especially implemented protocols H/H8, next-phase requirements I, and workflow L;
    then Git status/log and the current CI result.
 2. [Concurrency protocol](concurrency.md), [API contract](contracts/api.md),
    [database design](database.md), [security](security.md), and [decisions](decisions.md).
-3. [Phase 5 validation](phase-5-validation.md), including its final audit fixes and
-   limitations, and [Phase 5 explanation](phase-explanations/phase-5-explanation.md).
-   Read [Phase 4 validation](phase-4-validation.md) and its
-   [explanation](phase-explanations/phase-4-explanation.md) for the booking protocol;
-   earlier phase reports linked in D retain their historical detail.
-4. Actual reservation service/shared expiration helper, worker, event/auth transaction
-   ownership, models, route/HTTP guards, PostgreSQL fixtures, and reservation/worker race,
-   recovery, and fault tests listed in C. Plan Redis around that existing protocol.
+3. [Phase 6 validation](phase-6-validation.md), including quota/cache boundaries, audit
+   fixes, and corrected CI evidence, and its
+   [explanation](phase-explanations/phase-6-explanation.md). Read
+   [Phase 5 validation](phase-5-validation.md), [Phase 4 validation](phase-4-validation.md),
+   and their explanations for worker and booking guarantees; D links earlier records.
+4. Actual frontend `App.tsx`, health API client, package scripts, Vite proxy, and current
+   auth/event/reservation routes and schemas. Verify the organizer dashboard and closed-event
+   metadata gaps in I before designing those screens. Preserve the PostgreSQL transaction
+   and Redis failure boundaries described in C/H/H8.
 5. [README](../README.md), [Compose](../compose.yaml), and
    [CI workflow](../.github/workflows/ci.yml) before running the environment.
 
-The next implementation is **Phase 6 - Redis Integration**, after a new explicit request.
+The next implementation is **Phase 7 - Full Frontend**, after a new explicit request.
 This documentation-only update implements no application functionality and does not remove
 the requirement to stop for review before any future phase's commit/push.
