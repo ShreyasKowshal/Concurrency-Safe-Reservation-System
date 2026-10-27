@@ -92,6 +92,11 @@ jobs:
           node-version: "24"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
+      - name: Install browser checks
+        working-directory: frontend
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
       - name: Use public local example configuration
         run: cp .env.example .env
       - name: Validate Compose
@@ -109,11 +114,8 @@ jobs:
           curl --fail --retry 5 --retry-delay 2 http://localhost:5173/api/v1/health/ready
       - name: Run tests inside Compose against isolated PostgreSQL
         run: docker compose --profile test run --rm backend-test
-      - name: Install browser checks
-        working-directory: frontend
-        run: |
-          npm ci
-          npx playwright install --with-deps chromium
+      - name: Reservation API and proxy smoke
+        run: docker compose exec -T backend python scripts/smoke_reservations.py
       - name: Real frontend journeys with PostgreSQL, Redis, and worker
         run: |
           docker compose --profile worker up --build -d worker
