@@ -120,6 +120,14 @@ jobs:
         run: |
           docker compose --profile worker up --build -d worker
           npm --prefix frontend run test:e2e
+      - name: Upload browser failure evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase-7-playwright-failure-${{ github.run_id }}
+          path: frontend/test-results/
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Worker startup, backlog recovery, and graceful shutdown
         shell: bash
         run: |

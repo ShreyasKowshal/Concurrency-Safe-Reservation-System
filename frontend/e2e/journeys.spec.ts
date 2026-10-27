@@ -237,7 +237,7 @@ test("two independent browser sessions contend for the final seat", async () => 
   const gate = new Promise<void>((resolve) => {
     release = resolve;
   });
-  const statuses: number[] = [];
+  const statuses = new Map<Page, number>();
   for (const page of [attendeePage, rivalPage]) {
     await page.route(`**/events/${data.events.final}/holds`, async (route) => {
       arrivals++;
@@ -247,18 +247,17 @@ test("two independent browser sessions contend for the final seat", async () => 
     });
     page.on("response", (response) => {
       if (response.url().endsWith(`/events/${data.events.final}/holds`))
-        statuses.push(response.status());
+        statuses.set(page, response.status());
     });
   }
   await Promise.all([
     attendeePage.getByRole("button", { name: "Hold one seat" }).click(),
     rivalPage.getByRole("button", { name: "Hold one seat" }).click(),
   ]);
-  await expect.poll(() => statuses.length).toBe(2);
-  expect(statuses.sort()).toEqual([201, 409]);
-  const loser = attendeePage.url().includes("/events/")
-    ? attendeePage
-    : rivalPage;
+  await expect.poll(() => [...statuses.values()].sort()).toEqual([201, 409]);
+  const loser = statuses.get(attendeePage) === 409 ? attendeePage : rivalPage;
+  const winner = loser === attendeePage ? rivalPage : attendeePage;
+  await expect(winner).toHaveURL(/\/reservations\/[0-9a-f-]+$/);
   await expect(loser.getByRole("alert")).toContainText(
     "That seat was just reserved by someone else",
   );
