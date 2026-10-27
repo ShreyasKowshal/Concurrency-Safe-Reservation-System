@@ -22,8 +22,12 @@ export async function getReadiness(signal: AbortSignal): Promise<Readiness> {
     body.dependencies === null ||
     !("postgresql" in body.dependencies) ||
     !(
-      (response.status === 200 && body.status === "ready" && body.dependencies.postgresql === "up") ||
-      (response.status === 503 && body.status === "not_ready" && body.dependencies.postgresql === "down")
+      (response.status === 200 &&
+        body.status === "ready" &&
+        body.dependencies.postgresql === "up") ||
+      (response.status === 503 &&
+        body.status === "not_ready" &&
+        body.dependencies.postgresql === "down")
     )
   ) {
     throw new Error("Invalid health response");

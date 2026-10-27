@@ -28,6 +28,9 @@
 | ADR-024 | Atomic Redis fixed-window quotas outside business transactions | Shared multi-process quotas; new anonymous sessions/auth fail closed on outage, authenticated mutations/public reads continue safely through PostgreSQL; 429 is never a durable booking outcome |
 | ADR-025 | Cache public event detail only, with a fresh SQL visibility gate and absolute TTL | Avoid private/list/availability caching; successful event writes invalidate after commit, older fills remain bounded by the original miss deadline; a hit still costs an ID-only SQL query |
 | ADR-026 | Bound Redis DNS/TCP and socket waits with no automatic retries | Real stopped-service testing exposed DNS outside socket timeout; one shared pending daemon lookup bounds caller waits and blocked work, while TLS retains hostname verification |
+| ADR-027 | React Router, memory-only session/intent state, runtime-validated API DTOs | Real routes, cookie/CSRF support, explicit uncertain retries, and account isolation without a global private cache; small Router/Zod dependencies replace scattered transport assumptions |
+| ADR-028 | Owner booking snapshot in one SQL statement | The Phase 7 handoff requires counts and reservations absent from owner event detail; scoped lateral pagination and filtered counts share one clock/snapshot, expose no customer identities, and perform no writes |
+| ADR-029 | Separate component tests and real Compose browser journeys | Vitest exercises deterministic errors/timers; Playwright exercises real cookies, SQL contention, lost HTTP responses, native dialogs, accessibility and mobile layouts; fixtures clean only scoped records |
 
 Scope gates and acceptance criteria are in [phases](phases.md). Decisions are reviewed when
 requirements change, not silently bypassed by a new endpoint or worker.

@@ -1,6 +1,8 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App";
+import { BrowserRouter } from "react-router-dom";
+import { SessionProvider } from "./session";
 import "./styles.css";
 
 const root = document.getElementById("root");
@@ -8,6 +10,10 @@ if (!root) throw new Error("Application root is missing");
 
 createRoot(root).render(
   <StrictMode>
-    <App />
+    <BrowserRouter>
+      <SessionProvider>
+        <App />
+      </SessionProvider>
+    </BrowserRouter>
   </StrictMode>,
 );

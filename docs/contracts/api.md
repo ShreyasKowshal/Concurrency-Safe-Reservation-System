@@ -18,7 +18,7 @@ not migrations/schema, Redis, or worker progress. No authentication is required.
 The five `/auth/*` routes below are implemented in Phase 2. Phase 3 adds public event list/detail
 and organizer create/list/detail/edit/capacity/publish/close. Phase 4 adds holds, confirmation,
 cancellation, owner-only detail/history, and public advisory availability. The organizer
-dashboard remains planned and unregistered. The full implemented specification,
+dashboard is implemented in Phase 7 as a narrow owner-only read. The full implemented specification,
 including cookie/CSRF security schemes, is [api.openapi.yaml](api.openapi.yaml).
 
 Base path `/api/v1`. JSON requests/responses, UUID resource IDs, RFC 3339 UTC timestamps.
@@ -46,7 +46,7 @@ are never returned in response bodies. `GET /auth/me` requires authentication.
 | PATCH /organizer/events/{event_id}/capacity | capacity | 200: event | Owning organizer; event lock |
 | GET /organizer/events | limit, cursor | 200: own event summaries + next_cursor | Organizer |
 | GET /organizer/events/{event_id} | none | 200: own event detail, including draft/closed | Owning organizer; Phase 3 addition |
-| GET /organizer/events/{event_id}/dashboard | limit, cursor | 200: counts + paginated reservation rows | Owning organizer |
+| GET /organizer/events/{event_id}/dashboard | limit, cursor | 200: snapshot counts + paginated reservation IDs/status/times | Owning organizer; Phase 7 |
 | POST /events/{event_id}/holds | empty object | 201: reservation | Authenticated + idempotency key |
 | POST /reservations/{reservation_id}/confirm | empty object | 200: reservation | Owner + idempotency key |
 | POST /reservations/{reservation_id}/cancel | empty object | 200: reservation | Owner + idempotency key |
@@ -108,7 +108,8 @@ Authenticated/idempotent responses use no-store. Auth/CSRF validation still prec
 
 State/locking rules are normative in [concurrency.md](../concurrency.md). Event DTOs/OpenAPI
 are implemented in Phase 3; reservation/availability DTOs/OpenAPI in Phase 4. Dashboard
-DTOs and routes remain future work. Authentication is implemented as described below.
+DTOs and the owner-only route are implemented in Phase 7. Authentication is implemented
+as described below.
 
 ## Phase 3 event rules and clarified contract details
 
@@ -227,3 +228,34 @@ their original absolute expiry, and hits never extend it. Malformed/oversized/in
 cache data falls back to PostgreSQL. Redis does not contain private organizer/reservation data.
 Lists and availability are uncached; availability remains the one-query advisory snapshot,
 and every allocation/confirmation/expiration decision still uses the locked SQL transaction.
+
+## Phase 7 organizer booking snapshot
+
+`GET /organizer/events/{event_id}/dashboard` requires a current ORGANIZER session and
+ownership of the stored event. Missing/foreign events return 404; anonymous/attendee requests
+return 401/403. Reads accept limit 1-100 (default 20) and a bounded opaque cursor scoped to
+both owner and event, ordered by `(created_at,id)`. Invalid or cross-scope cursors return 422.
+No CSRF header is needed for this write-free GET. Responses use no-store and are not cached.
+
+The response contains `event_id`, `capacity`, `allocated_seats`, `as_of`, `counts`, `items`,
+and `next_cursor`. Counts cover the entire event, independently of the selected page:
+
+| Count | Meaning at the single sampled PostgreSQL `as_of` |
+| --- | --- |
+| valid_held | Stored HELD with hold_expires_at strictly greater than as_of |
+| overdue_held | Stored HELD with hold_expires_at at or before as_of, awaiting persisted cleanup |
+| confirmed | Stored CONFIRMED |
+| cancelled | Stored CANCELLED |
+| expired | Stored EXPIRED, excluding overdue rows still stored HELD |
+
+The counter includes persisted HELD and CONFIRMED, so under the reservation protocol it equals
+valid_held + overdue_held + confirmed. The read never cleans up or changes that counter.
+Each item uses the existing ReservationResponse projection: overdue HELD appears EXPIRED,
+potentially with null expired_at. No user IDs, email addresses, passwords, or session data
+are returned. Organizer rows do not confer access to attendee-only reservation detail.
+
+One SQL statement combines the owned event, materialized database clock, filtered aggregates,
+and a bounded lateral page (limit + 1). All response parts share one MVCC snapshot, including
+an empty page. Later pages/refreshes are new snapshots. No schema/migration, domain mutation,
+reservation locking change, or speculative analytics endpoint is introduced. API version
+remains 0.4.0, now with 21 paths / 23 operations. Runtime OpenAPI is exported and tested exactly.

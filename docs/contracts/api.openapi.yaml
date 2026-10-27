@@ -757,6 +757,98 @@ paths:
       security:
       - SessionCookie: []
         CsrfToken: []
+  /api/v1/organizer/events/{event_id}/dashboard:
+    get:
+      tags:
+      - organizer events
+      summary: Bookings
+      description: 'Owner-only snapshot; overdue stored holds are separate from valid
+        holds.
+
+
+        Includes reservation IDs/status/times, never customer identities. Reads perform
+        no cleanup.'
+      operationId: bookings_api_v1_organizer_events__event_id__dashboard_get
+      parameters:
+      - name: event_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Event Id
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 100
+          minimum: 1
+          default: 20
+          title: Limit
+      - name: cursor
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            minLength: 1
+            maxLength: 512
+          - type: 'null'
+          title: Cursor
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingDashboard'
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
+        '415':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unsupported Media Type
+        '503':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Service Unavailable
+        '422':
+          description: Invalid request fields, combined schedule, or pagination cursor.
+          content:
+            application/json:
+              schema:
+                anyOf:
+                - $ref: '#/components/schemas/HTTPValidationError'
+                - $ref: '#/components/schemas/ErrorResponse'
+      security:
+      - SessionCookie: []
   /api/v1/organizer/events/{event_id}/capacity:
     patch:
       tags:
@@ -1637,6 +1729,69 @@ components:
       - available_seats
       - as_of
       title: Availability
+    BookingCounts:
+      properties:
+        valid_held:
+          type: integer
+          title: Valid Held
+        overdue_held:
+          type: integer
+          title: Overdue Held
+        confirmed:
+          type: integer
+          title: Confirmed
+        cancelled:
+          type: integer
+          title: Cancelled
+        expired:
+          type: integer
+          title: Expired
+      type: object
+      required:
+      - valid_held
+      - overdue_held
+      - confirmed
+      - cancelled
+      - expired
+      title: BookingCounts
+    BookingDashboard:
+      properties:
+        event_id:
+          type: string
+          format: uuid
+          title: Event Id
+        capacity:
+          type: integer
+          title: Capacity
+        allocated_seats:
+          type: integer
+          title: Allocated Seats
+        as_of:
+          type: string
+          format: date-time
+          title: As Of
+        counts:
+          $ref: '#/components/schemas/BookingCounts'
+        items:
+          items:
+            $ref: '#/components/schemas/ReservationResponse'
+          type: array
+          title: Items
+        next_cursor:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Next Cursor
+      type: object
+      required:
+      - event_id
+      - capacity
+      - allocated_seats
+      - as_of
+      - counts
+      - items
+      - next_cursor
+      title: BookingDashboard
     CapacityUpdate:
       properties:
         capacity:

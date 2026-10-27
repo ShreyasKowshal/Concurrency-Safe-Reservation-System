@@ -9,12 +9,13 @@ local administration commands. Phase 3 adds public event discovery and owner-onl
 create/read/edit/capacity/publish/close operations with event-row locks. Phase 4 adds holds,
 confirmation/cancellation, request-time expiration, durable idempotency, owner history/detail,
 and public advisory availability. Phase 5 adds the standalone expiration worker, bounded
-index-backed cleanup, and recovery tests; Phases 1-5 are committed. Phase 6 adds Redis quotas
-and public event detail caching locally, awaiting review. Organizer dashboard, business UI,
-and deployment remain **future work**.
+index-backed cleanup, and recovery tests. Phase 6 adds Redis quotas and public event detail
+caching; Phases 1-6 are committed. Phase 7 adds the full React business UI and owner-only
+booking snapshot locally, awaiting external review. Deployment remains **future work**.
 See [Phase 4 validation](phase-4-validation.md) and [Phase 5 validation](phase-5-validation.md)
 for historical PostgreSQL evidence; [Phase 6 validation](phase-6-validation.md) records Redis
-integration, its failure policies, and current review status. The handoff remains at Phase 5.
+integration and its failure policies. [Phase 7 validation](phase-7-validation.md) records the
+frontend evidence. The handoff intentionally remains the approved post-Phase-6 snapshot.
 
 ## Modular monolith
 
@@ -96,12 +97,12 @@ See [database design](database.md), [transaction protocol](concurrency.md),
 
 ## System architecture diagram
 
-Solid arrows show implemented communication. Dashed arrows show future work. The browser
-still displays health only; cookie-aware clients can use the implemented business APIs.
+Solid arrows show implemented communication. The React browser and other cookie-aware
+clients use the same session-protected business APIs.
 
 ```mermaid
 flowchart TB
-    Web["React health screen<br/>Business screens: Phase 7 planned"]
+    Web["React discovery, account, reservation<br/>and organizer screens"]
     Client["Cookie-aware API client"]
     subgraph Backend["FastAPI modular monolith"]
         Api["Health, auth, events, reservations, availability"]
@@ -123,9 +124,8 @@ flowchart TB
     Pg[("PostgreSQL: durable source of truth")]
     Redis[("Redis: quotas + public detail metadata<br/>Ephemeral supporting data only")]
     Worker["Standalone PostgreSQL sweeper<br/>No Redis client or HTTP dependency"]
-    Web -->|"Vite /api health proxy"| Api
+    Web -->|"Vite /api proxy, cookies, CSRF, booking retry keys"| Api
     Client -->|"JSON, cookie, Origin, CSRF, retry key"| Api
-    Web -.->|"Phase 7 business screens"| Api
     Orm --> Pg
     Api -->|"Quotas/cache; invalidation after commit"| Redis
     Worker --> Cleanup
@@ -138,7 +138,7 @@ The five-table schema is unchanged; Phase 5 adds the partial event/expiry/ID ind
 
 ## Application workflow diagram
 
-These are implemented backend transitions. React account/event/booking screens remain Phase 7.
+These backend transitions are connected to React account/event/booking screens in Phase 7.
 
 ```mermaid
 flowchart TD
@@ -306,3 +306,39 @@ from becoming public. Admission and advisory availability retain their PostgreSQ
 Cache hits avoid loading the full description but still query visibility; no latency speedup
 or production SLA is claimed. See [README configuration](../README.md#redis-support-phase-6-awaiting-review)
 and [Phase 6 validation](phase-6-validation.md) for keys, limits, tests, and recovery evidence.
+
+## Phase 7 browser architecture
+
+React Router maps discovery, event detail, accounts, private reservation history/detail, and
+the organizer workspace to deep-linkable URLs. App supplies semantic layout and session/role
+guards. SessionProvider restores `/auth/me`, coordinates logout/account changes across tabs,
+and keys private component trees by account/revision. There is no global private query cache.
+The resource hook cancels reads and rejects stale completions when a resource or account changes.
+
+The single API client owns same-origin configuration, 15-second request deadlines, cookie
+credentials, CSRF bootstrap/rotation, bounded numeric Retry-After, controlled error mapping,
+runtime Zod DTO validation, and memory-only booking intents. One promise per command path
+collapses duplicate submissions. A network/503/429 uncertainty retains the exact key; a
+definitive business conflict ends it. After every successful command/replay, fresh private
+detail supplies displayed state. After reload, paginated private history is reconciled before
+a new hold. Navigation does not claim a pending command rolled back; departed screens ignore
+its callbacks while the client retains recovery state.
+
+Countdowns derive remaining time from `hold_expires_at`, the fresh resource's `server_time`,
+and elapsed monotonic browser time. A single timer updates display and resumed tabs. At zero,
+one fresh read checks the effective state. PostgreSQL still decides expiry/confirmation;
+confirmed reservations never use their original deadline as a new expiration. Related event
+metadata uses the public route with an explicit event-ID fallback after closure.
+
+Organizer metadata/capacity/lifecycle commands use the existing endpoints. The new dashboard
+is necessary because owner event detail has only a stored allocation counter. Its one-statement
+SQL read combines owner scope, a materialized clock, filtered counts and a bounded lateral
+reservation page. Valid holds, overdue stored holds and persisted expiration are separate.
+No customer identities, cross-user detail access, writes, new tables or migrations are added.
+
+Vitest/Testing Library exercise failures, state isolation, timers, routing, forms, transport
+and retry intent. Separate Playwright journeys use the real Compose API/PostgreSQL/Redis/worker,
+scoped fixtures, two independent browser sessions and an observed request barrier for the final
+seat. Lost-response tests forward an actual command, observe its successful response, then
+discard delivery; the next attempt must reuse its key. Accessibility uses axe plus real
+keyboard/dialog and viewport checks. No production load/latency result is inferred.

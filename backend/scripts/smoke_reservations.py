@@ -67,7 +67,8 @@ def main():
         check(owner, "frontend", "GET", "/", 200)
         check(owner, "proxy-ready", "GET", "/api/v1/health/ready", 200)
         document = check(owner, "openapi", "GET", "http://backend:8000/openapi.json", 200).json()
-        assert document["info"]["version"] == "0.4.0" and len(document["paths"]) == 20
+        assert document["info"]["version"] == "0.4.0" and len(document["paths"]) == 21
+        assert "get" in document["paths"]["/api/v1/organizer/events/{event_id}/dashboard"]
         check(owner, "direct-ready", "GET", "http://backend:8000/api/v1/health/ready", 200)
         check(owner, "docs", "GET", "http://backend:8000/docs", 200)
         tokens = []
@@ -133,6 +134,13 @@ def main():
         key_headers = attendee_headers | {"Idempotency-Key": "hold"}
         held = check(attendee, "hold", "POST", public + "/holds", 201, headers=key_headers, json={})
         assert held.headers["idempotency-replayed"] == "false"
+        dashboard = check(owner, "owner-bookings", "GET", private + "/dashboard", 200).json()
+        assert dashboard["counts"]["valid_held"] == 1
+        assert (
+            dashboard["allocated_seats"] == 1 and dashboard["items"][0]["id"] == held.json()["id"]
+        )
+        assert "user_id" not in dashboard["items"][0]
+        check(attendee, "attendee-bookings-denied", "GET", private + "/dashboard", 403)
         reservation = f"/api/v1/reservations/{held.json()['id']}"
         replay = check(
             attendee,

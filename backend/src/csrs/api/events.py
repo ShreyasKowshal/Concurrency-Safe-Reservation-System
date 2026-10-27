@@ -10,6 +10,7 @@ from csrs.auth.dependencies import Database, require_organizer
 from csrs.auth.http import validate_mutation_request
 from csrs.auth.schemas import EmptyRequest, ErrorResponse
 from csrs.events import service
+from csrs.events.dashboard import BookingDashboard, dashboard
 from csrs.events.schemas import (
     CapacityUpdate,
     EventCreate,
@@ -103,6 +104,17 @@ def own_events(
 @organizer_router.get("/{event_id}", response_model=OrganizerEvent)
 def own_event(event_id: UUID, db: Database, user: Organizer) -> OrganizerEvent:
     return service.get_owned_event(db, event_id, user)
+
+
+@organizer_router.get("/{event_id}/dashboard", response_model=BookingDashboard)
+def bookings(
+    event_id: UUID, db: Database, user: Organizer, limit: Limit = 20, cursor: Cursor = None
+) -> BookingDashboard:
+    """Owner-only snapshot; overdue stored holds are separate from valid holds.
+
+    Includes reservation IDs/status/times, never customer identities. Reads perform no cleanup.
+    """
+    return dashboard(db, user, event_id, limit, cursor)
 
 
 @organizer_router.post("", status_code=201, response_model=OrganizerEvent, dependencies=mutation)

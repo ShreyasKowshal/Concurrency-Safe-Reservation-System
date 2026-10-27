@@ -93,6 +93,8 @@ services:
       dockerfile: Dockerfile
     environment:
       CSRS_API_PROXY_TARGET: http://backend:8000
+      # Docker Desktop bind mounts may not forward Windows filesystem events.
+      CSRS_USE_POLLING: "true"
     ports:
       - "127.0.0.1:5173:5173"
     volumes:

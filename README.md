@@ -3,16 +3,18 @@
 A full-stack event/workshop reservation project focused on PostgreSQL transactions,
 concurrent capacity allocation, idempotency, and failure recovery.
 
-**Current implementation: Phase 6 implemented locally and awaiting review.** The API provides
+**Current implementation: Phase 7 implemented locally and awaiting external review.** The API provides
 health checks, session authentication/CSRF, event management, one-seat holds, confirmation,
 cancellation, request-time expiration, durable idempotency, private history, and advisory
 availability. Five PostgreSQL tables use the foundation schema plus the Phase 5 index migration.
 The standalone worker provides bounded cleanup and recovery. Redis now supports atomic rate
 limits and short-lived public event detail caching. PostgreSQL still owns every reservation,
-capacity, deadline, and idempotency decision; availability is never cached. React remains a
-health screen; booking/dashboard UI and production deployment remain future work. See
-[Phase 6 evidence](docs/phase-6-validation.md) and its
-[beginner explanation](docs/phase-explanations/phase-6-explanation.md).
+capacity, deadline, and idempotency decision; availability is never cached. React now supports
+discovery, cookie-based accounts, reservation holds/confirmation/cancellation/history, and an
+organizer workspace with owner-only booking snapshots. Production deployment remains Phase 8.
+See [Phase 7 evidence](docs/phase-7-validation.md) and its
+[beginner explanation](docs/phase-explanations/phase-7-explanation.md). Changes are uncommitted;
+hosted CI for Phase 7 awaits review and approved publication. The handoff is intentionally unchanged.
 
 ## Repository structure
 
@@ -29,12 +31,15 @@ csrs/
     requirements-dev.lock  # Resolved transitive development constraints
     Dockerfile
   frontend/
-    src/api/               # Same-origin health client
-    src/App.tsx            # Foundation status screen
+    src/api/               # Typed runtime-validated API, CSRF and retry intents
+    src/pages/             # Auth, public events, reservations, organizer workspace
+    src/components/        # Feedback, native dialogs, server-anchored countdown
+    src/App.tsx            # Routing, guards, application layout
+    e2e/                   # Real Compose browser journeys and accessibility checks
     package-lock.json      # Reproducible npm dependency resolution
     Dockerfile
   docs/
-    contracts/             # Implemented API/OpenAPI contracts; future dashboard contract
+    contracts/             # Implemented API/OpenAPI contracts including owner dashboard
     architecture.md
     database.md
     concurrency.md
@@ -168,11 +173,33 @@ tests at the application database as a workaround.
 Frontend verification:
 
 ```powershell
+npm.cmd --prefix frontend test
+npm.cmd --prefix frontend run format:check
 npm.cmd --prefix frontend run build
 ```
 
-That runs strict TypeScript checking followed by a Vite build. There is no frontend unit-test
-framework yet. The health screen has no business actions or authentication placeholders.
+The build runs strict TypeScript checking, including test/config sources, followed by Vite.
+Vitest/Testing Library tests are separate from real-backend Playwright journeys:
+
+```powershell
+npm.cmd --prefix frontend exec playwright install chromium
+docker compose --profile worker up --build -d worker
+npm.cmd --prefix frontend run test:e2e
+```
+
+Run browser tests on the quiet local stack after migrations. UUID-scoped fixtures create
+temporary users/events, test real PostgreSQL contention, adjust only their hold deadline,
+reconcile SQL invariants, and remove their own rows/pre-sessions. The test asserts original
+table counts are restored. Screenshots/traces on failure stay under ignored test-results.
+Compose enables bounded Vite polling because Windows bind mounts can miss filesystem events.
+Host Vite uses native watching by default. No browser test mocks a successful booking outcome.
+
+Routes: `/`, `/events/:id`, `/login`, `/register`, `/reservations`, `/reservations/:id`,
+`/organizer`, `/organizer/events/new`, `/organizer/events/:id`, and
+`/organizer/events/:id/edit`. Organizer access still requires the local admin promotion below.
+The API base can be changed with a public `VITE_API_BASE_URL` same-origin path (default
+`/api/v1`); cross-origin API URLs are deliberately rejected. The existing Vite proxy preserves
+Origin and cookie behavior. Use `http://localhost:5173`, matching CSRS_PUBLIC_ORIGIN.
 
 ## Contracts and implementation decisions
 
@@ -180,7 +207,7 @@ framework yet. The health screen has no business actions or authentication place
 - [Implemented relational foundation and constraints](docs/database.md)
 - [Transactions, capacity invariant, states, expiration, and retries](docs/concurrency.md)
 - [Anonymous and authenticated CSRF/session design](docs/security.md)
-- [Implemented health/auth/events/reservations and planned dashboard API](docs/contracts/api.md)
+- [Implemented health/auth/events/reservations and owner dashboard API](docs/contracts/api.md)
 - [Decision records](docs/decisions.md)
 - [Phase gates and future concurrency evidence](docs/phases.md)
 - [Completed Phase 1 validation](docs/phase-1-validation.md)
@@ -227,11 +254,12 @@ uses `httpx2`; it is a development dependency, not an application HTTP integrati
 ## CI and security hygiene
 
 GitHub Actions defines backend lint/format/unit/contract checks, required real PostgreSQL
-integration tests, a frontend build, Docker image builds, and a Compose health/proxy smoke check.
+integration tests, frontend formatting/type checks/unit tests/build, Docker image builds,
+and real Compose browser/accessibility journeys alongside the health/proxy smoke check.
 The workflow also applies/checks development migrations and exercises migrations in isolated
-PostgreSQL/Redis tests. Phases 1-5 are committed with green CI. Phase 6 adds real Redis tests
+PostgreSQL/Redis tests. Phases 1-6 are committed with green CI. Phase 6 adds real Redis tests
 and a Compose cache/outage/recovery smoke, including API/worker startup while Redis is stopped.
-Hosted Phase 6 CI requires a later approved commit/push. No deployment secret is required.
+Hosted Phase 7 CI requires a later approved commit/push. No deployment secret is required.
 
 `.env`, local environments, package caches, build output, and common key files are ignored.
 `.env.example` contains public local examples only. No production credentials are required.
@@ -239,7 +267,7 @@ Do not log settings dumps with revealed secret values or commit database backups
 
 Phase 4 includes reproducible PostgreSQL contention/failure tests with two independent API
 processes. These establish the tested correctness scenarios; they are not production load
-or latency/throughput measurements. Phase 6 changes remain uncommitted for review.
+or latency/throughput measurements. Phase 7 changes remain uncommitted for review.
 
 ## Reservation API and retry keys
 
@@ -340,7 +368,11 @@ and live API/proxy readiness plus availability, then removes only its generated 
 See [Phase 5 validation](docs/phase-5-validation.md) and the
 [twelve-section explanation](docs/phase-explanations/phase-5-explanation.md) for evidence and limits.
 
-## Redis support (Phase 6, awaiting review)
+<!-- Retain the legacy fragment used by historical Phase 6 reports. -->
+<!-- markdownlint-disable-next-line MD033 -->
+<a id="redis-support-phase-6-awaiting-review"></a>
+
+## Redis support (Phase 6)
 
 The API owns one lazy redis-py 8.1 connection pool. Startup/readiness and the worker do not
 require a live Redis server. DNS plus TCP connection waits and socket operations are bounded;
@@ -419,4 +451,5 @@ docker compose exec -T backend python scripts/smoke_redis.py recovered
 The helper generates scoped temporary users/sessions/event/reservations, verifies live
 cache/quotas, mutation replay, worker expiration and SQL invariants, and restores table counts.
 Restore Redis even if an outage check fails. See [Phase 6 validation](docs/phase-6-validation.md)
-for exact evidence, audit fixes, failure policies, and remaining limits. Phase 7 has not started.
+for historical evidence, audit fixes, failure policies, and remaining limits. Current frontend
+evidence is in [Phase 7 validation](docs/phase-7-validation.md).

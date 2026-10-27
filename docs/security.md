@@ -3,8 +3,8 @@
 **Implemented in Phase 2:** registration, login, logout, current user, session bootstrap,
 CSRF/origin validation, role guards, and local organizer provisioning. Phase 3 applies these
 protections to event mutations and owner-only reads. Phase 4 applies them to reservation
-commands, reads, and idempotent replays. The React page is still a health screen, not an auth or
-event-management UI.
+commands, reads, and idempotent replays. Phase 7 adds the React account, event, reservation,
+and organizer UI without changing these server-enforced boundaries.
 
 ## Sessions and roles
 
@@ -123,8 +123,8 @@ requires database access and is never exposed as an HTTP role-selection endpoint
 or revoked security sessions, skipping rows locked by other transactions. Repeat as needed.
 
 Phase 6 adds rate limiting; automatic security-session maintenance remains deferred. Run
-bounded session cleanup manually. No email verification, password recovery, MFA, or auth UI
-is implemented. Cookie/CSRF protection does not substitute for those later product controls.
+bounded session cleanup manually. Phase 7 supplies the auth UI; email verification, password
+recovery, and MFA remain absent. Cookie/CSRF protection does not substitute for those controls.
 Phase 3 event mutation handlers combine the HTTP origin/JSON guard with session/CSRF validation
 inside their service transaction and recheck after an event lock wait. Phase 4 reservation
 handlers do the same, and recheck after waiting on an idempotency claim; a read-only role dependency
@@ -142,6 +142,29 @@ Ownership guards must receive the owner ID read from the stored resource, never 
 - Revoked/expired sessions cannot act; GET CSRF responses are never cached.
 - Public registration cannot set roles; cross-user and cross-organizer access is denied.
 - Browser integration through the Vite proxy demonstrates cookie and header behavior.
+
+## Phase 7 browser boundary
+
+The centralized API client accepts a same-origin base path (default `/api/v1`), includes
+cookie credentials and no-store, and adds JSON plus the current synchronizer token on mutations.
+Registration replaces the anonymous token and explicitly requires subsequent login. Login
+rotates it; reload bootstraps it again. Tokens, passwords and booking retry keys are never
+persisted in browser storage, URLs, telemetry or logs. Controlled field-error text never echoes
+submitted input; unknown server messages and traces are not rendered. React escapes text;
+no raw HTML injection is used. Redirects are restricted to known internal route patterns.
+
+Private screens wait for session restoration and organizer role checks. The server remains
+the authorization authority. On 401/logout/account change the client aborts old requests,
+discards tokens and pending intents, and remounts private state. Response generations prevent
+late completions from repopulating another account's UI. Focus revalidates the session;
+BroadcastChannel coordinates changes across tabs without transmitting private account data.
+Pending domain commands can finish after navigation, but departed screens ignore their callbacks.
+
+The organizer snapshot exposes reservation IDs/status/times only after role and SQL ownership
+checks, with no customer identities. Lost booking responses retain the exact key/path/body
+in memory until reconciliation; reload recovers through private history before new admission.
+No backend CORS, cookie, CSRF, quota or ownership requirement was weakened. Numeric Retry-After
+is bounded and honored by the client; requests are never automatically retried.
 
 References: [OWASP CSRF
 prevention](https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html),
