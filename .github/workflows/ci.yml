@@ -102,11 +102,11 @@ jobs:
       - name: Validate Compose
         run: docker compose config --quiet
       - name: Build images
-        run: docker compose build backend frontend backend-test
+        run: docker compose build backend frontend backend-test migrate worker
       - name: Exercise Compose development stack
         run: |
-          docker compose up -d --wait --wait-timeout 120
-          docker compose exec -T backend python -m alembic upgrade head
+          docker compose --profile worker up -d --wait --wait-timeout 180
+          docker compose exec -T backend python -m alembic current
           docker compose exec -T backend python -m alembic check
           curl --fail --retry 10 --retry-delay 2 --retry-connrefused http://localhost:8000/api/v1/health/live
           curl --fail http://localhost:8000/api/v1/health/ready
@@ -124,7 +124,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: phase-7-playwright-failure-${{ github.run_id }}
+          name: phase-8-playwright-failure-${{ github.run_id }}
           path: frontend/test-results/
           if-no-files-found: ignore
           retention-days: 7
@@ -150,6 +150,9 @@ jobs:
           docker compose up -d --wait --wait-timeout 60 redis
           docker compose exec -T backend python scripts/smoke_redis.py recovered
           docker compose --profile worker stop worker
+      - name: Isolated local restart and persistence verification
+        shell: pwsh
+        run: ./scripts/verify-local.ps1
       - name: Show service logs on failure
         if: failure()
         run: |

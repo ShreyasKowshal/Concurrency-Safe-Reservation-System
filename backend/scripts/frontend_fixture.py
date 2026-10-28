@@ -122,6 +122,20 @@ def run(action: str, scope: str, cookies: list[str]):
                     "active_uniqueness": True,
                     "final_seat_allocated": 1,
                 }
+            if action == "expire-session":
+                hashes = [token_digest(cookie) for cookie in cookies if valid_token(cookie)]
+                rows = list(
+                    db.scalars(
+                        select(SessionRecord).where(
+                            SessionRecord.user_id.in_(users), SessionRecord.token_hash.in_(hashes)
+                        )
+                    )
+                )
+                now = database_time(db)
+                for row in rows:
+                    row.created_at = now - timedelta(hours=1)
+                    row.expires_at = now - timedelta(seconds=1)
+                return {"sessions_expired": len(rows)}
             if action == "cleanup":
                 # Serialize with the worker before touching reservation rows.
                 list(
@@ -158,5 +172,5 @@ def run(action: str, scope: str, cookies: list[str]):
 
 
 if __name__ == "__main__":
-    cookies = json.load(sys.stdin) if sys.argv[1] == "cleanup" else []
+    cookies = json.load(sys.stdin) if sys.argv[1] in {"cleanup", "expire-session"} else []
     print(json.dumps(run(*sys.argv[1:], cookies)))

@@ -9,6 +9,7 @@ COPY backend/pyproject.toml backend/requirements-dev.lock backend/alembic.ini ./
 COPY backend/src ./src
 COPY backend/migrations ./migrations
 COPY backend/tests ./tests
+COPY backend/scripts ./scripts
 COPY docs /workspace/docs
 # This image is a development/test foundation, not the final production image.
 RUN pip install --no-cache-dir -c requirements-dev.lock ".[dev]" \

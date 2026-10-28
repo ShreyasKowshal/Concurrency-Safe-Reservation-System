@@ -10,18 +10,22 @@ create/read/edit/capacity/publish/close operations with event-row locks. Phase 4
 confirmation/cancellation, request-time expiration, durable idempotency, owner history/detail,
 and public advisory availability. Phase 5 adds the standalone expiration worker, bounded
 index-backed cleanup, and recovery tests. Phase 6 adds Redis quotas and public event detail
-caching; Phases 1-6 are committed. Phase 7 adds the full React business UI and owner-only
-booking snapshot locally, awaiting external review. Deployment remains **future work**.
+caching; Phases 1-7 are committed. Phase 7 adds the full React business UI and owner-only
+booking snapshot. Phase 8 adds local startup/migration gating, recovery verification and
+portfolio guides. Cloud deployment remains **deferred future work**.
 See [Phase 4 validation](phase-4-validation.md) and [Phase 5 validation](phase-5-validation.md)
 for historical PostgreSQL evidence; [Phase 6 validation](phase-6-validation.md) records Redis
 integration and its failure policies. [Phase 7 validation](phase-7-validation.md) records the
-frontend evidence. The handoff intentionally remains the approved post-Phase-6 snapshot.
+frontend evidence. [Phase 8 validation](phase-8-validation.md) records current local checks.
+The handoff preserves phase history and publication/CI provenance. Its older cloud roadmap
+is superseded by the owner's local-only Phase 8 scope.
 
 ## Modular monolith
 
 The React browser client calls `/api/v1` on its own origin. In development Vite proxies
-that path to FastAPI without rewriting the browser's Origin header. In the planned deployment,
-the backend serves the built frontend from the same origin.
+that path to FastAPI without rewriting the browser's Origin header. A future public deployment
+needs an explicitly implemented static/proxy tier or backend static serving on the same origin;
+neither public serving design has been deployed or verified.
 
 FastAPI handles transport/validation. Authentication/event/reservation services own transaction
 boundaries and
@@ -279,7 +283,8 @@ rediscovers committed HELD rows. Duplicate/stale processing cannot release termi
 rows again. Recoverable database errors roll back, emit sanitized JSON, and retry with capped
 exponential backoff. Failures within a cached page are paced too, allowing later candidates to
 progress without a tight reconnect loop. Unexpected errors terminate with a sanitized failure
-record; Compose restart policy is unless-stopped. Startup never runs migrations automatically.
+record; Compose restart policy is unless-stopped. The worker process never runs migrations.
+Full Compose startup gates it on a separate migration service, described below.
 
 ## Phase 6 Redis boundaries and failure policies
 
@@ -342,3 +347,45 @@ scoped fixtures, two independent browser sessions and an observed request barrie
 seat. Lost-response tests forward an actual command, observe its successful response, then
 discard delivery; the next attempt must reuse its key. Accessibility uses axe plus real
 keyboard/dialog and viewport checks. No production load/latency result is inferred.
+
+## Phase 8 local startup and verification
+
+The owner selected localhost instead of cloud deployment. `scripts/local.ps1 start` invokes
+`docker compose --profile worker up --build -d --wait --wait-timeout 180`, copying the public
+local example only when `.env` is absent. No existing database is reset. All published ports
+bind to loopback. PostgreSQL has a persistent named volume; Redis has disposable quotas/cache.
+
+```mermaid
+flowchart TD
+    Start[Full local startup] --> PG[PostgreSQL healthy]
+    Start --> Redis[Redis healthy for full-stack wait]
+    PG --> Migrate[One-shot migration service]
+    Migrate --> Lock[Database advisory transaction lock]
+    Lock --> Upgrade[Alembic upgrade head and drift check]
+    Upgrade -->|Success and commit| API[FastAPI ready]
+    Upgrade -->|Success and commit| Worker[Independent worker running]
+    Upgrade -->|Failure or lock timeout| Stop[Startup fails visibly; no schema race]
+    API --> Frontend[Frontend starts and passes HTTP probe]
+```
+
+The migrator uses the same PostgreSQL connection/outer transaction for its advisory lock,
+Alembic upgrade and metadata comparison. Competing invocations serialize or hit the configured
+statement timeout (default 3 seconds); failure is sanitized and prevents dependent startup.
+The advisory lock is released by commit/rollback. Cooperating migration entry points must use
+`python -m csrs.migrate`; do not race a raw administrative Alembic upgrade against it.
+No migration, model, business endpoint, table or reservation algorithm changed in Phase 8.
+
+API reload is disabled in ordinary Compose demonstrations; explicit restart loads source edits.
+API, frontend, PostgreSQL, Redis and worker use `unless-stopped`. Docker's restart policy
+recovers exited processes, not arbitrary unhealthy processes. Health remains separate from
+worker progress: committed expiration and worker-cycle logs establish actual cleanup.
+Vite remains local tooling rather than a hardened public static tier.
+
+`compose.validation.yaml` removes host ports for a fresh project generated by
+`scripts/verify-local.ps1`. Project-scoped networks/volumes isolate its restart and outage
+experiments from the normal application. A secret fixture session lives only in orchestrator
+memory/stdin. Exact replay, session persistence, confirmed preservation, overdue cleanup and
+SQL equality are asserted after restarts and ordinary down/up. Neither script deletes volumes.
+The [demo guide](DEMO_GUIDE.md) documents repeatable scoped sample data and cleanup guards.
+The [future deployment plan](FUTURE_DEPLOYMENT.md) separates portable application components
+from HTTPS, runtime/proxy packaging, backups and other infrastructure that does not yet exist.

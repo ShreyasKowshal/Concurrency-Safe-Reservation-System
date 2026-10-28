@@ -64,6 +64,20 @@ def test_production_requires_https(settings: Settings) -> None:
         Settings(**{**settings.model_dump(), "environment": "production"})
 
 
+@pytest.mark.parametrize("password", ["csrs_local_only", "csrs_test_local_only", "ci_example_only"])
+def test_production_rejects_public_example_credentials(settings: Settings, password: str) -> None:
+    with pytest.raises(ValidationError, match="replace public local examples") as error:
+        Settings(
+            **{
+                **settings.model_dump(),
+                "environment": "production",
+                "public_origin": "https://reservations.example.com",
+                "database_url": f"postgresql+psycopg://csrs:{password}@db/csrs",
+            }
+        )
+    assert password not in str(error.value)
+
+
 def test_invalid_pool_size_fails_early(settings: Settings) -> None:
     with pytest.raises(ValidationError):
         Settings(**{**settings.model_dump(), "db_pool_size": 0})

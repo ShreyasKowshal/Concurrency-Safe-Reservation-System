@@ -1,10 +1,13 @@
+import secrets
 from typing import Annotated
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import pytest
 from argon2 import PasswordHasher, Type
 from fastapi import Depends
+from psycopg import sql
 from sqlalchemy import select, update
+from sqlalchemy.engine import make_url
 
 from csrs.auth.admin import promote_organizer, purge_sessions
 from csrs.auth.crypto import PASSWORD_HASHER, token_digest
@@ -75,32 +78,59 @@ def test_local_promotion_requires_existing_active_user(db, user_factory):
         promote_organizer(db, "attendee@example.com")
 
 
-def test_cookie_security_in_https_environment(client_factory, postgres_settings, user_factory):
+def test_cookie_security_in_https_environment(
+    client_factory, postgres_settings, user_factory, clean_engine
+):
     user_factory()
-    secure_settings = type(postgres_settings)(
-        **{
-            **postgres_settings.model_dump(),
-            "environment": "production",
-            "public_origin": "https://testserver",
-        }
-    )
-    with client_factory(settings=secure_settings) as client:
-        bootstrap = client.get("/api/v1/auth/csrf")
-        header = bootstrap.headers["set-cookie"]
-        assert header.startswith("__Host-csrs_session=")
-        for required in ["Secure", "HttpOnly", "SameSite=lax", "Path=/", "Max-Age=900"]:
-            assert required in header
-        assert "Domain=" not in header
-        result = client.post(
-            "/api/v1/auth/login",
-            json={"email": "attendee@example.com", "password": PASSWORD},
-            headers={
-                "Origin": "https://testserver",
-                "X-CSRF-Token": bootstrap.json()["csrf_token"],
-            },
+    # Production settings now reject public example passwords. Use a generated,
+    # least-privilege role in this disposable test DB, preserving real auth/SQL tests.
+    role, password = "csrs_cookie_" + uuid4().hex, secrets.token_hex(32)
+    identifier = sql.Identifier(role)
+    with clean_engine.begin() as connection:
+        driver = connection.connection.driver_connection
+        driver.execute(
+            sql.SQL("CREATE ROLE {} LOGIN PASSWORD {}").format(identifier, sql.Literal(password))
         )
-        assert result.status_code == 200 and "Max-Age=28800" in result.headers["set-cookie"]
-        assert client.get("/api/v1/auth/me").status_code == 200
+        driver.execute(sql.SQL("GRANT USAGE ON SCHEMA public TO {}").format(identifier))
+        driver.execute(
+            sql.SQL(
+                "GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO {}"
+            ).format(identifier)
+        )
+    try:
+        url = make_url(postgres_settings.database_url.get_secret_value()).set(
+            username=role, password=password
+        )
+        secure_settings = type(postgres_settings)(
+            **{
+                **postgres_settings.model_dump(),
+                "environment": "production",
+                "public_origin": "https://testserver",
+                "database_url": url.render_as_string(hide_password=False),
+            }
+        )
+        with client_factory(settings=secure_settings) as client:
+            bootstrap = client.get("/api/v1/auth/csrf")
+            header = bootstrap.headers["set-cookie"]
+            assert header.startswith("__Host-csrs_session=")
+            for required in ["Secure", "HttpOnly", "SameSite=lax", "Path=/", "Max-Age=900"]:
+                assert required in header
+            assert "Domain=" not in header
+            result = client.post(
+                "/api/v1/auth/login",
+                json={"email": "attendee@example.com", "password": PASSWORD},
+                headers={
+                    "Origin": "https://testserver",
+                    "X-CSRF-Token": bootstrap.json()["csrf_token"],
+                },
+            )
+            assert result.status_code == 200 and "Max-Age=28800" in result.headers["set-cookie"]
+            assert client.get("/api/v1/auth/me").status_code == 200
+    finally:
+        with clean_engine.begin() as connection:
+            driver = connection.connection.driver_connection
+            driver.execute(sql.SQL("DROP OWNED BY {}").format(identifier))
+            driver.execute(sql.SQL("DROP ROLE {}").format(identifier))
 
 
 def test_old_hash_is_upgraded_on_successful_login(client, db, user_factory):

@@ -116,4 +116,8 @@ class Settings(BaseSettings):
             raise ValueError("worker retry initial delay must not exceed maximum delay")
         if self.environment == "production" and not self.secure_cookies:
             raise ValueError("production public_origin requires HTTPS")
+        if self.environment == "production" and make_url(
+            self.database_url.get_secret_value()
+        ).password in {"csrs_local_only", "csrs_test_local_only", "ci_example_only"}:
+            raise ValueError("production database credentials must replace public local examples")
         return self

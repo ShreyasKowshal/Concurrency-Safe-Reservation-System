@@ -140,6 +140,21 @@ def test_final_seats_across_two_api_processes(
         assert db.scalar(select(func.count()).select_from(IdempotencyRecord)) == attempts
     assert_consistent(clean_engine)
 
+    print(
+        json.dumps(
+            {
+                "scenario": "final_seats",
+                "api_processes": 2,
+                "capacity": capacity,
+                "attempts": attempts,
+                "created": capacity,
+                "event_full": attempts - capacity,
+                "allocated_seats": capacity,
+                "sql_reconciled": True,
+            }
+        )
+    )
+
 
 @pytest.mark.parametrize("mode", ["same-key", "different-key", "different-path"])
 def test_concurrent_duplicates_across_api_processes(
@@ -169,6 +184,17 @@ def test_concurrent_duplicates_across_api_processes(
         assert sum(status == 201 for status, _, _ in replies) == expected_success
         assert all(status == 201 or body["error"]["code"] == code for status, body, _ in replies)
     assert_consistent(clean_engine)
+    print(
+        json.dumps(
+            {
+                "scenario": mode,
+                "attempts": 10,
+                "http_success": sum(status == 201 for status, _, _ in replies),
+                "replays": sum(replayed == "true" for _, _, replayed in replies),
+                "sql_reconciled": True,
+            }
+        )
+    )
 
 
 def ordered_commands(

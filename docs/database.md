@@ -1,8 +1,10 @@
 # Relational database foundation
 
 **Implemented in Phase 2:** five SQLAlchemy models and Alembic revision `0001_foundation`.
-Use `alembic upgrade head`; no runtime `create_all`, automatic startup migration, or database
-extension is needed. PostgreSQL's built-in `gen_random_uuid()` supplies server-side IDs.
+Use versioned Alembic migrations; no runtime `create_all` or database extension is needed.
+Phase 8 Compose startup runs a separate `python -m csrs.migrate` service before API/worker,
+under a database advisory transaction lock. Application processes do not migrate on startup.
+PostgreSQL's built-in `gen_random_uuid()` supplies server-side IDs.
 
 Use UUID primary keys, `timestamptz` for instants, UTC API timestamps, explicit foreign keys,
 and NOT NULL for required data. Normalize email with one documented case-insensitive policy;
@@ -108,5 +110,6 @@ The existing `(hold_expires_at,event_id)` partial index serves bounded global di
 The new index serves ordered, limited cleanup for one locked event, avoiding sorting all of a
 large event's active rows or walking unrelated events' due entries. No columns, tables, data,
 or constraints change. Upgrade/downgrade and metadata drift are tested on disposable databases.
-Migration is an explicit administrator step before starting the worker. Its CREATE INDEX is
+Migration precedes the worker (the Phase 8 Compose migration gate automates that step).
+Its CREATE INDEX is
 transactional, with ordinary PostgreSQL index-build locking; it is not an online deployment.

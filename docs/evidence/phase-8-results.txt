@@ -1,0 +1,95 @@
+CSRS PHASE 8 - OBSERVED LOCAL EVIDENCE
+2026-10-28 Asia/Calcutta
+Baseline main: 6bf24b0203bf0c752c2edf5e668152c3945f07c2
+Capture snapshot: Phase 8 was uncommitted when this evidence was produced.
+Later publication/hosted CI provenance is recorded in docs/PROJECT_HANDOFF.md.
+No cloud deployment or production benchmark is claimed.
+FULL REGRESSION
+555 passed in 187.16s (0:03:07)
+156 unit/contract + 399 real PostgreSQL/Redis integration cases.
+Frontend: 71 passed; TypeScript/Vite build and Prettier passed.
+Chromium: 8 passed (1.2m)
+REPEATED UNCHANGED TWO-PROCESS RACES (fresh disposable DB per run)
+Run 1:
+{"scenario": "final_seats", "api_processes": 2, "capacity": 1, "attempts": 50, "created": 1, "event_full": 49, "allocated_seats": 1, "sql_reconciled": true}
+{"scenario": "final_seats", "api_processes": 2, "capacity": 20, "attempts": 100, "created": 20, "event_full": 80, "allocated_seats": 20, "sql_reconciled": true}
+{"scenario": "same-key", "attempts": 10, "http_success": 10, "replays": 9, "sql_reconciled": true}
+{"scenario": "different-key", "attempts": 10, "http_success": 1, "replays": 0, "sql_reconciled": true}
+{"scenario": "different-path", "attempts": 10, "http_success": 5, "replays": 4, "sql_reconciled": true}
+5 passed, 35 deselected in 17.34s
+Run 2:
+{"scenario": "final_seats", "api_processes": 2, "capacity": 1, "attempts": 50, "created": 1, "event_full": 49, "allocated_seats": 1, "sql_reconciled": true}
+{"scenario": "final_seats", "api_processes": 2, "capacity": 20, "attempts": 100, "created": 20, "event_full": 80, "allocated_seats": 20, "sql_reconciled": true}
+{"scenario": "same-key", "attempts": 10, "http_success": 10, "replays": 9, "sql_reconciled": true}
+{"scenario": "different-key", "attempts": 10, "http_success": 1, "replays": 0, "sql_reconciled": true}
+{"scenario": "different-path", "attempts": 10, "http_success": 5, "replays": 4, "sql_reconciled": true}
+5 passed, 35 deselected in 17.44s
+Run 3:
+{"scenario": "final_seats", "api_processes": 2, "capacity": 1, "attempts": 50, "created": 1, "event_full": 49, "allocated_seats": 1, "sql_reconciled": true}
+{"scenario": "final_seats", "api_processes": 2, "capacity": 20, "attempts": 100, "created": 20, "event_full": 80, "allocated_seats": 20, "sql_reconciled": true}
+{"scenario": "same-key", "attempts": 10, "http_success": 10, "replays": 9, "sql_reconciled": true}
+{"scenario": "different-key", "attempts": 10, "http_success": 1, "replays": 0, "sql_reconciled": true}
+{"scenario": "different-path", "attempts": 10, "http_success": 5, "replays": 4, "sql_reconciled": true}
+5 passed, 35 deselected in 17.43s
+
+FAILED SUPPLEMENTAL RUN (not hidden or counted as passing)
+Capacity 20/100: 20 created and 74 EVENT_FULL; unexpected responses included controlled 503 TEMPORARILY_UNAVAILABLE. The strict assertion failed. Exact remaining response histogram was not retained by pytest truncation. Three subsequent quiet runs retained unchanged assertions and passed; no performance SLA is inferred.
+
+ISOLATED LIVE RECOVERY
+PASS: generated project volume and zero published host ports verified
+PASS: backend restart, session, replay, worker, SQL counters
+PASS: frontend restart, session, replay, worker, SQL counters
+PASS: redis restart, session, replay, worker, SQL counters
+PASS: worker restart, session, replay, worker, SQL counters
+PASS: postgres restart, session, replay, worker, SQL counters
+PASS: full down/up persistence
+{"database_unavailable": true, "liveness": 200, "readiness": 503, "private_read": 503}
+PASS: database unavailable 503 and recovery
+{"event": "redis_smoke_passed", "mode": "available", "http_checks": 13, "worker_expired": 1, "invariant_mismatches": 0}
+{"event": "redis_smoke_passed", "mode": "outage", "http_checks": 13, "worker_expired": 1, "invariant_mismatches": 0}
+{"event": "redis_smoke_passed", "mode": "recovered", "http_checks": 13, "worker_expired": 1, "invariant_mismatches": 0}
+PASS: isolated restart/outage/recovery verification
+All isolated containers stopped; volumes retained. Normal csrs project untouched by isolated verifier.
+
+NORMAL PROJECT LIFECYCLE / LIVE SMOKE
+Actual local.ps1 stop/start: passed. Same PostgreSQL cluster identity and scoped demo table counts after restart. Repeated csrs.demo prepare preserved records. Cleanup restored original table counts.
+Worker smoke: 5 expired, allocated_seats 0, 3 HTTP checks; 6 scoped users and 1 event cleaned.
+Reservation smoke: 35 HTTP checks; original table counts restored.
+Read-only SQL: 0 counter/bounds mismatches; 0 duplicate active pairs; 0 incomplete idempotency claims.
+Six localhost URLs: all HTTP 200. Runtime OpenAPI equals snapshot: 21 paths / 23 operations.
+Alembic head/current: 0002_worker_expiry; no new upgrade operations.
+
+SECURITY / DOCUMENTATION
+npm audit: 0 vulnerabilities. pip-audit 2.10.1 pinned Python lock: no known vulnerabilities. pip check: no broken requirements. No dependency upgrades.
+Ruff: all checks passed, 70 Python files formatted.
+Mermaid: 6 diagrams actually rendered as SVG in Chromium with positive dimensions.
+Screenshots: 7 real PNG captures; account addresses masked. No traces/videos included.
+Known limits: public hosting, backups/restore, non-Chromium/manual screen readers, OS image vulnerability scanning and production performance not validated.
+
+REPRODUCTION (repository root)
+./scripts/local.ps1 start
+docker compose --profile test run --build --rm backend-test python -m pytest -q -p no:cacheprovider --tb=short
+npm --prefix frontend test
+npm --prefix frontend run format:check
+npm --prefix frontend run build
+npm --prefix frontend run test:e2e
+./scripts/verify-local.ps1
+See docs/DEMO_GUIDE.md for bounded race, worker, scoped demo and read-only SQL commands.
+
+CAPTURE SHA-256
+confirmed-reservation.png dc7c971d9b08810c7ba28e580d89d6090b865039a9e760b136e51d5124820de2
+discovery.png adc5e861499080ec5c57f76de6f8a8d6d74789f66cc6aff4ab2979a480b3a431
+event-creation.png 5ee4f2293ab2ff2a4b4bd6f893b95bbb69ac6d6f7e64aef33180c944b7dc6b15
+event-detail.png 1f2a3dd410d8f8320ec2115980a3a3a7da5a740e9921844ab061a8fdd32e7ca5
+held-countdown.png a082c8910b7424e5592f7aa7c84248d0bebca0d395d045cbc5fc22a608d07fd0
+organizer-dashboard.png 991f59857496761015b4dfc9bb6308da7dcdb820d1f3942a9dc4030d30151e52
+reservation-history.png 8e1be029cc4dfae8d52f10f9d4b351bb948fe8d7af1d3edb299b829813e61d27
+
+AUTHORIZED FINALIZATION RECHECK (2026-10-28)
+Backend: 555 passed in 108.46 seconds, no failures/skips.
+Frontend: 71 passed; Prettier and TypeScript/Vite passed.
+Chromium: 8 passed in 42.7 seconds; approved captures preserved.
+Bounded 503 investigation: two unchanged five-target runs passed in 17.94 and 17.64 seconds. Temporary error observer saw no database-503 event; current PostgreSQL log interval had no timeout/connection-limit/unexpected-shutdown messages. Original 503 cause remains unproven. No assertions/timeouts relaxed.
+Normal stop/start retained database identity/table counts and .env. Worker smoke: 5 expired, allocation 0, 3 HTTP checks. Reservation smoke: 35 checks with counts restored.
+Isolated recovery passed; Redis available/outage/recovered each 13 checks, 1 expiration, 0 invariant mismatches. Read-only SQL categories all zero.
+Full finalization details: docs/phase-8-validation.md section 20. Published SHA/hosted CI provenance: docs/PROJECT_HANDOFF.md.

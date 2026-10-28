@@ -31,6 +31,9 @@
 | ADR-027 | React Router, memory-only session/intent state, runtime-validated API DTOs | Real routes, cookie/CSRF support, explicit uncertain retries, and account isolation without a global private cache; small Router/Zod dependencies replace scattered transport assumptions |
 | ADR-028 | Owner booking snapshot in one SQL statement | The Phase 7 handoff requires counts and reservations absent from owner event detail; scoped lateral pagination and filtered counts share one clock/snapshot, expose no customer identities, and perform no writes |
 | ADR-029 | Separate component tests and real Compose browser journeys | Vitest exercises deterministic errors/timers; Playwright exercises real cookies, SQL contention, lost HTTP responses, native dialogs, accessibility and mobile layouts; fixtures clean only scoped records |
+| ADR-030 | Localhost-first Phase 8; cloud deferred | Reproducible portfolio demonstration without accounts/costs; public hosting/TLS/backup operations remain a separate future assignment |
+| ADR-031 | One-shot Compose migration gate with PostgreSQL advisory transaction lock | API/worker wait for upgrade and drift check; concurrent cooperating runners serialize or fail visibly without racing DDL |
+| ADR-032 | Explicit UUID-scoped demo data and isolated recovery project | Private password prompt, collision/cross-scope cleanup guards, separate named volume and no host ports; no development database reset |
 
 Scope gates and acceptance criteria are in [phases](phases.md). Decisions are reviewed when
 requirements change, not silently bypassed by a new endpoint or worker.

@@ -9,7 +9,12 @@
 | 5 | Sweeper and failure recovery | Worker restart drains backlog; no expired confirmation or double release; timeouts handled |
 | 6 | Redis rate limits and metadata cache | Atomic quota checks; multi-process limits; outage policy tested; capacity independent of cache |
 | 7 | Booking and organizer UI | Browser flows, current-state refresh, retry-key behavior, and accessible errors |
-| 8 | Full evidence, deployment, backup/restore | Reproducible concurrency/failure runs, live persistent DB, restore exercise, accurate resume claims |
+| 8 | Local production readiness, final validation, portfolio evidence | Reproducible localhost startup, persistence/recovery, concurrency/worker/Redis evidence, safe demo and interview guides; cloud/backup infrastructure deferred |
+
+The owner explicitly revised Phase 8 to localhost-only on 2026-10-28. Public cloud deployment,
+paid services and managed backup/restore infrastructure are not part of its acceptance gate.
+See [Phase 8 validation](phase-8-validation.md) and [future deployment](FUTURE_DEPLOYMENT.md).
+The historical handoff is preserved until external review and approved hosted CI finalization.
 
 Stop for review at each phase. Phase 1 must not create users/events/reservations or provision
 paid infrastructure. Review evidence and exceptions in [phase-1-validation](phase-1-validation.md).

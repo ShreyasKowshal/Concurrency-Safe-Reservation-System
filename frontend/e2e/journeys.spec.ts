@@ -1,11 +1,21 @@
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 import { test, expect, type BrowserContext, type Page } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 
 // Real backend only. No mocked success data. Fixtures use scoped local admin SQL.
 const root = fileURLToPath(new URL("../../", import.meta.url));
+async function capture(page: Page, name: string) {
+  if (process.env.CSRS_CAPTURE_EVIDENCE !== "1") return;
+  await page.screenshot({
+    path: join(root, "docs", "evidence", `${name}.png`),
+    fullPage: true,
+    mask: [page.locator(".account-email")],
+    maskColor: "#f4f1e9",
+  });
+}
 const scope = randomUUID();
 async function fixture(action: string, cookies: string[] = []) {
   const output = await new Promise<string>((resolve, reject) => {
@@ -98,10 +108,16 @@ test("attendee registration, login, hold, confirmation, history, cancellation, r
   await expect(
     attendeePage.getByRole("heading", { name: "Find your next thing." }),
   ).toBeVisible();
+  await expect(
+    attendeePage.getByRole("button", { name: "Refresh events" }),
+  ).toBeEnabled();
+  await expect(attendeePage.locator(".event-card").first()).toBeVisible();
+  await capture(attendeePage, "discovery");
   await attendeePage.goto(`/events/${data.events.experience}`);
   await expect(
     attendeePage.getByRole("link", { name: "Log in to hold a seat" }),
   ).toBeVisible();
+  await capture(attendeePage, "event-detail");
   await attendeePage.goto("/register");
   await attendeePage.getByLabel("Email address").fill(data.emails.attendee);
   await attendeePage
@@ -115,12 +131,14 @@ test("attendee registration, login, hold, confirmation, history, cancellation, r
   await hold(attendeePage, data.events.experience);
   await attendeePage.reload();
   await expect(attendeePage.getByRole("timer")).toBeVisible();
+  await capture(attendeePage, "held-countdown");
   await attendeePage
     .getByRole("button", { name: "Confirm reservation" })
     .click();
   await expect(
     attendeePage.getByText("CONFIRMED", { exact: true }),
   ).toBeVisible();
+  await capture(attendeePage, "confirmed-reservation");
   await attendeePage
     .getByRole("navigation", { name: "Main navigation" })
     .getByRole("link", { name: "My reservations", exact: true })
@@ -128,6 +146,7 @@ test("attendee registration, login, hold, confirmation, history, cancellation, r
   await expect(
     attendeePage.getByText("CONFIRMED", { exact: true }),
   ).toBeVisible();
+  await capture(attendeePage, "reservation-history");
   await attendeePage.getByRole("link", { name: "View reservation" }).click();
   await attendeePage
     .getByRole("button", { name: "Cancel reservation", exact: true })
@@ -147,6 +166,7 @@ test("organizer creates, edits, changes capacity, publishes, views bookings, and
     .getByRole("link", { name: "Organizer", exact: true })
     .click();
   await organizerPage.getByRole("link", { name: /Create an event/ }).click();
+  await capture(organizerPage, "event-creation");
   await organizerPage
     .getByLabel("Event title")
     .fill(`Browser lifecycle ${scope.slice(0, 8)}`);
@@ -204,6 +224,7 @@ test("organizer creates, edits, changes capacity, publishes, views bookings, and
   await expect(
     organizerPage.getByText("Overdue holds awaiting cleanup"),
   ).toBeVisible();
+  await capture(organizerPage, "organizer-dashboard");
   await organizerPage
     .getByRole("button", { name: "Close event", exact: true })
     .click();
@@ -429,4 +450,23 @@ test("SQL capacity/counter/uniqueness reconciliation", async () => {
     active_uniqueness: true,
     final_seat_allocated: 1,
   });
+});
+test("server session expiration clears private browser state", async () => {
+  const cookies = (await attendee.cookies())
+    .filter((cookie) => cookie.name === "csrs_session")
+    .map((cookie) => cookie.value);
+  expect(await fixture("expire-session", cookies)).toEqual({
+    sessions_expired: 1,
+  });
+  await attendeePage.goto("/reservations");
+  await attendeePage.reload();
+  await expect(
+    attendeePage.getByRole("link", { name: "Log in securely" }),
+  ).toBeVisible();
+  await expect(
+    attendeePage.getByRole("button", { name: "Log out" }),
+  ).toHaveCount(0);
+  await expect(
+    attendeePage.getByText("CONFIRMED", { exact: true }),
+  ).toHaveCount(0);
 });

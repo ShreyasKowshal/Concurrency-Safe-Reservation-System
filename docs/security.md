@@ -172,3 +172,23 @@ prevention](https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Fo
 management](https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html),
 [password
 storage](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html).
+
+## Phase 8 local operations and future configuration
+
+Full Compose startup runs a separate transaction-locked migrator before API/worker. It never
+resets the database. Ordinary shutdown preserves volumes; API/worker processes do not perform
+per-process migrations. The recovery verifier validates its generated project-scoped volume
+and absent host ports before stopping services. It keeps fixture session material only in
+memory/stdin and reports sanitized assertions. It never targets the normal application project.
+
+The explicit local demo CLI accepts a recorded UUID scope and prompts privately for a new
+password. It preserves existing scoped records on repeated setup; cleanup checks deterministic
+account IDs/addresses and refuses foreign reservations. No reusable default account password
+is committed. Sample account addresses use example.com and screenshots mask account identity.
+
+Production settings require HTTPS and reject the known public example PostgreSQL passwords.
+This narrow guard does not assess arbitrary password strength, rotate credentials or validate
+managed TLS. Local Vite serving, no-auth Redis and development/test images must not be reused
+as public infrastructure without the review in [future deployment](FUTURE_DEPLOYMENT.md).
+No credentialed cross-origin policy was added; CSRS_PUBLIC_ORIGIN remains the exact CSRF
+trusted origin. The same-origin browser path and service URLs remain configurable.
