@@ -26,16 +26,22 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<unknown>();
   const [revision, setRevision] = useState(0);
   const current = useRef<User | null>(null);
+  const settled = useRef(false);
   const sequence = useRef(0);
   const channel = useRef<BroadcastChannel | null>(null);
   const clear = useCallback(() => {
+    // An ordinary anonymous /me 401 is not an identity change. Remounting
+    // main here would discard public form state and collapse page height.
+    if (!current.current) return;
     current.current = null;
     setUser(null);
     setRevision((n) => n + 1);
   }, []);
   const restore = useCallback(async () => {
     const ticket = ++sequence.current;
-    setLoading(true);
+    // Only initial restoration blocks rendering. Focus revalidation must keep
+    // the current page mounted until the server establishes a session change.
+    setLoading(!settled.current);
     setError(undefined);
     try {
       const next = await api.me();
@@ -51,12 +57,19 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       setUser(next);
     } catch (failure) {
       if (ticket !== sequence.current || isAbort(failure)) return;
-      api.reset();
+      if (
+        current.current ||
+        !(failure instanceof ApiError && failure.status === 401)
+      )
+        api.reset();
       clear();
       if (!(failure instanceof ApiError && failure.status === 401))
         setError(failure);
     } finally {
-      if (ticket === sequence.current) setLoading(false);
+      if (ticket === sequence.current) {
+        settled.current = true;
+        setLoading(false);
+      }
     }
   }, [clear]);
   useEffect(() => {

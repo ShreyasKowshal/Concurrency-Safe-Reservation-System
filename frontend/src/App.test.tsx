@@ -104,6 +104,106 @@ function app(path: string) {
 }
 afterEach(() => api.reset());
 describe("session and authentication interaction", () => {
+  it("keeps an unsaved organizer form mounted throughout same-user focus refresh", async () => {
+    let finish!: (response: Response) => void;
+    let refreshing = false;
+    const pending = new Promise<Response>((resolve) => {
+      finish = resolve;
+    });
+    server(owner, (path) =>
+      path.endsWith("/auth/me") && refreshing ? pending : undefined,
+    );
+    app("/organizer/events/new");
+    const title = await screen.findByLabelText("Event title");
+    fireEvent.change(title, { target: { value: "Unsaved workshop" } });
+    refreshing = true;
+    await act(async () => {
+      window.dispatchEvent(new Event("focus"));
+    });
+    expect(screen.queryByLabelText("Event title")).toBe(title);
+    expect(title).toHaveValue("Unsaved workshop");
+    await act(async () => {
+      finish(json(owner));
+    });
+    expect(screen.getByLabelText("Event title")).toBe(title);
+    expect(title).toHaveValue("Unsaved workshop");
+  });
+  it("does not remount public discovery or cancel public reads for another anonymous 401", async () => {
+    const { fetch } = server(null);
+    app("/");
+    await screen.findByText(event.title);
+    const main = document.querySelector("main");
+    const reset = vi.spyOn(api, "reset");
+    reset.mockClear();
+    await act(async () => {
+      window.dispatchEvent(new Event("focus"));
+    });
+    expect(document.querySelector("main")).toBe(main);
+    expect(screen.getByText(event.title)).toBeVisible();
+    expect(reset).not.toHaveBeenCalled();
+    expect(
+      fetch.mock.calls.filter(([url]) =>
+        new URL(String(url), "http://localhost").pathname.endsWith("/events"),
+      ),
+    ).toHaveLength(1);
+    reset.mockRestore();
+  });
+  it("keeps an anonymous login form mounted during successful anonymous revalidation", async () => {
+    server(null);
+    app("/login");
+    const email = await screen.findByLabelText("Email address");
+    fireEvent.change(email, { target: { value: "unsaved@example.com" } });
+    await act(async () => {
+      window.dispatchEvent(new Event("focus"));
+    });
+    expect(screen.getByLabelText("Email address")).toBe(email);
+    expect(email).toHaveValue("unsaved@example.com");
+  });
+  it.each([401, 503])(
+    "still clears private state when focus revalidation fails with %s",
+    async (status) => {
+      let refreshing = false;
+      server(owner, (path) =>
+        path.endsWith("/auth/me") && refreshing
+          ? json(
+              {
+                error: {
+                  code:
+                    status === 401
+                      ? "AUTHENTICATION_REQUIRED"
+                      : "DEPENDENCY_UNAVAILABLE",
+                  message: "unavailable",
+                },
+              },
+              status,
+            )
+          : undefined,
+      );
+      app("/organizer/events/new");
+      fireEvent.change(await screen.findByLabelText("Event title"), {
+        target: { value: "Private draft" },
+      });
+      refreshing = true;
+      await act(async () => {
+        window.dispatchEvent(new Event("focus"));
+      });
+      expect(screen.queryByLabelText("Event title")).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole("link", { name: "Organizer" }),
+      ).not.toBeInTheDocument();
+    },
+  );
+  it("removes organizer controls on a same-account role downgrade", async () => {
+    const { state } = server(owner);
+    app("/organizer/events/new");
+    await screen.findByLabelText("Event title");
+    state.identity = user;
+    await act(async () => {
+      window.dispatchEvent(new Event("focus"));
+    });
+    expect(await screen.findByText("Organizer access required.")).toBeVisible();
+    expect(screen.queryByLabelText("Event title")).not.toBeInTheDocument();
+  });
   it("isolates private state when a different account is restored on focus", async () => {
     const { state } = server(user, (path) =>
       path.includes("/me/reservations")
