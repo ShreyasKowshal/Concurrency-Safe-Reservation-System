@@ -1238,3 +1238,49 @@ All eight planned phases are complete for the localhost portfolio project. Optio
 Render/similar hosting has not been performed and needs a new explicit request plus its own
 security/infrastructure/verification work. Stop after finalization; do not start another phase
 or deploy simply because this handoff exists.
+
+## N. Post-Phase-8 maintenance: session and scroll stability
+
+**Verified 2026-10-28.** Manual testing found unsaved organizer event inputs disappearing
+and scroll positions jumping after switching tabs/windows. Focus revalidation set loading
+on every check, so private guards unmounted the active page and discarded uncontrolled form
+inputs. Removing content also collapsed document height and let Chromium clamp scroll.
+Separately, anonymous-to-anonymous /auth/me 401 responses reset the API and incremented the
+main subtree's revision, unnecessarily remounting public pages. Observed reproductions had
+no document reload or URL change; they were not focus-triggered Vite reloads.
+
+The provider now blocks only initial restoration and keeps pages mounted during background
+checks. An unchanged anonymous 401 no longer resets the API or revision. Genuine expiry,
+account/role changes, logout and failed authenticated revalidation still invalidate private
+state. Navigation, backend security/reservation transactions, Redis and worker code are unchanged.
+
+The implementation changes exactly three files:
+
+- [session.tsx](../frontend/src/session.tsx): background restoration and identity handling.
+- [App.test.tsx](../frontend/src/App.test.tsx): six additional session/state regression cases.
+- [view-stability.spec.ts](../frontend/e2e/view-stability.spec.ts): thirteen additional browser
+  tests covering ten public/private views, all seven create-event fields, pending and ordinary
+  refreshes, repeated tab activation, navigation/Back and real server session expiry.
+
+Fresh local and corrected hosted checks passed **77 frontend tests** and **21 Chromium tests**,
+plus TypeScript, Prettier and the production build. Hosted backend/Compose checks also passed.
+Scoped browser cleanup restored counts; read-only PostgreSQL cluster/count/full-row hashes
+matched the pre-test snapshot across all five tables. Existing configuration/data were preserved.
+
+Implementation: `15f666e88bb6bd41f2859312037a0217d18f7375`.
+Message: `fix: preserve frontend state during session refresh`.
+Its first [hosted run](https://github.com/ShreyasKowshal/Concurrency-Safe-Reservation-System/actions/runs/40740121421)
+failed in fixture login after the shared peer auth quota returned 429 with Retry-After.
+The separate test-only correction `0ba5440b596277890c3a1dc265cad17a46c8decf` makes setup honor
+the existing UI cooldown and retry once, with validated Retry-After bounded to 60 seconds.
+Only the setup hook gets 120 seconds for that wait; test deadlines/assertions, real login and
+security limits remain unchanged.
+The [corrected exact-source CI run](https://github.com/ShreyasKowshal/Concurrency-Safe-Reservation-System/actions/runs/40741946048)
+completed/success for this correction SHA: backend, frontend and Compose all green.
+
+Automated verification uses headless Chromium tab activation plus supplemental focus events;
+manual OS-window-switch behavior has not been independently verified. Drafts are not persisted
+across intentional reload/navigation or genuine session changes. Existing native Back restoration
+and scroll anchoring may adjust offsets while content reloads. The project remains localhost-only;
+no cloud deployment occurred. All earlier Phase 1-8 text above is retained as historical evidence.
+The handoff publication's own SHA and independent hosted CI are verified in the final report.
