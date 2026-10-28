@@ -39,6 +39,9 @@ let guest: Page, owner: Page, attendee: Page;
 let reservationId: string;
 const errors: string[] = [];
 test.beforeAll(async ({ browser }) => {
+  // Other spec files share the same peer quota. Allow one real server-directed
+  // cooldown (at most its default 60s window), without changing test deadlines.
+  test.setTimeout(120000);
   data = await fixture("prepare");
   contexts = await Promise.all(
     [0, 1, 2].map(() =>
@@ -57,7 +60,32 @@ test.beforeAll(async ({ browser }) => {
     await page.goto("/login");
     await page.getByLabel("Email address").fill(email);
     await page.getByLabel("Password", { exact: true }).fill(data.password);
-    await page.getByRole("button", { name: "Log in", exact: true }).click();
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const response = page.waitForResponse(
+        (r) =>
+          new URL(r.url()).pathname === "/api/v1/auth/login" &&
+          r.request().method() === "POST",
+      );
+      await page.getByRole("button", { name: "Log in", exact: true }).click();
+      const reply = await response;
+      if (reply.status() !== 429 || attempt === 1) {
+        expect(reply.status()).toBe(200);
+        break;
+      }
+      const retryAfter = reply.headers()["retry-after"] ?? "";
+      expect(retryAfter).toMatch(/^\d+$/);
+      const seconds = Number(retryAfter);
+      expect(seconds).toBeGreaterThan(0);
+      expect(seconds).toBeLessThanOrEqual(60);
+      console.log(`Browser fixture honoring auth Retry-After: ${seconds}s`);
+      const alert = page.getByRole("alert");
+      await expect(alert).toContainText("Too many requests");
+      // Follow the existing UI's authoritative cooldown. Do not disable quotas,
+      // clear Redis, mock login success or retry other authentication failures.
+      await expect(alert).toContainText("You can try again now.", {
+        timeout: (seconds + 2) * 1000,
+      });
+    }
     await expect(
       page.getByRole("heading", { name: "My reservations." }),
     ).toBeVisible();
