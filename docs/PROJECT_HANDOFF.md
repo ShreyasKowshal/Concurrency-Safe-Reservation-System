@@ -1329,3 +1329,39 @@ preserves its prepublication review checkpoint; [MANIFEST.md](screenshots/MANIFE
 lists all final dimensions and hashes. No application/frontend/backend code,
 migration, dependency, security setting, or worker logic changed. **No public cloud
 deployment occurred.** Earlier handoff history is retained in full.
+
+## P. Final documentation maintenance: architecture and validation organization
+
+**Verified 2026-10-29.** The main [README](../README.md) now includes a System Architecture
+diagram and a Reservation Workflow diagram. They show PostgreSQL authority, event-row locking,
+durable idempotency, reservation states, Redis cache/quota boundaries and independent expiry.
+Both rendered successfully in Chromium; all **14 repository Mermaid diagrams** parsed.
+
+All eight complete Phase 1–8 reports now live in [validations/](validations/README.md), with
+an eight-phase index. Their **2,603 original lines** and historical evidence are preserved;
+only necessary links/path references changed. Affected documentation links were repaired,
+including the existing handoff. Git recognized all eight report renames at 99–100% similarity.
+Earlier handoff history remains intact.
+
+Publication commit: `0778b3ecedbcc35936216817576c3113b92ad0af`.
+Message: `docs: improve architecture and organize validation reports`.
+Its [exact-commit Foundation CI run](https://github.com/ShreyasKowshal/Concurrency-Safe-Reservation-System/actions/runs/40889684147)
+completed/success: **backend, frontend and Compose all passed**.
+
+Prepublication checks passed Markdown lint for **35 files**, **426 local references** including
+**18 fragments and 78 image references**, Mermaid verification and `git diff --check`.
+The five README previews and **73-image gallery** are preserved; all **80 existing PNG hashes**
+are unchanged. Authenticated GitHub rendering confirmed both Mermaid blocks, five previews
+and all 73 gallery images; published Git blob hashes matched the reviewed documentation.
+
+The bounded setup/demo/interview/architecture/evidence audit found no documentation BLOCKER
+or HIGH issue. Application code, dependencies, migrations and configuration are unchanged.
+Read-only checks preserved all original PostgreSQL rows, cluster identity and named volume;
+SQL reconciliation returned zero issues. The existing expired anonymous pre-session remains
+for normal maintenance. No destructive database cleanup or cloud deployment occurred.
+
+The repository remains private and requires viewer access. The minor mobile login heading
+join and existing screenshot coverage exclusions remain documented. Local Vite serving,
+unverified production performance, absent public HTTPS and backup/restore remain limitations.
+CSRS is complete as a frozen localhost portfolio project. This handoff append's own
+publication and hosted CI are verified separately in the final report.
