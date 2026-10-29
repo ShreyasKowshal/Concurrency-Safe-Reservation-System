@@ -3,7 +3,7 @@
 **Implemented through Phase 4:** event-row locking, reservation commands, durable idempotency,
 and request-time expiration. Capacity edits and reservation commands share due-hold cleanup
 under the event lock. The standalone worker is completed in Phase 5; see
-[its validation](phase-5-validation.md). Phase 6 Redis support is implemented locally and
+[its validation](validations/phase-5-validation.md). Phase 6 Redis support is implemented locally and
 awaits review; it does not change this reservation protocol.
 
 ## Product rules

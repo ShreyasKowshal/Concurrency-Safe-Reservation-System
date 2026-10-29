@@ -1,7 +1,7 @@
 # CSRS interview demonstration
 
 This guide demonstrates the localhost application. No cloud account, domain or hosting plan
-is needed. Read [Phase 8 validation](phase-8-validation.md) for observed results and limits.
+is needed. Read [Phase 8 validation](validations/phase-8-validation.md) for observed results and limits.
 Commands below start in the repository root. Do not erase the PostgreSQL volume.
 
 ## Prepare before the interview

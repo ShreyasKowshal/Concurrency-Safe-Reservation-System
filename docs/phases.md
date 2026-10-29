@@ -13,11 +13,11 @@
 
 The owner explicitly revised Phase 8 to localhost-only on 2026-10-28. Public cloud deployment,
 paid services and managed backup/restore infrastructure are not part of its acceptance gate.
-See [Phase 8 validation](phase-8-validation.md) and [future deployment](FUTURE_DEPLOYMENT.md).
+See [Phase 8 validation](validations/phase-8-validation.md) and [future deployment](FUTURE_DEPLOYMENT.md).
 The historical handoff is preserved until external review and approved hosted CI finalization.
 
 Stop for review at each phase. Phase 1 must not create users/events/reservations or provision
-paid infrastructure. Review evidence and exceptions in [phase-1-validation](phase-1-validation.md).
+paid infrastructure. Review evidence and exceptions in [phase-1-validation](validations/phase-1-validation.md).
 
 ## Later correctness evidence
 

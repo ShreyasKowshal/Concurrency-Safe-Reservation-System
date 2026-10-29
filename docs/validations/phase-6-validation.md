@@ -126,7 +126,7 @@ Two API processes consuming the same stale capacity still allocate only the fina
 
 ## Configuration, infrastructure, and commands
 
-The [README](../README.md#redis-support-phase-6-awaiting-review) and [.env.example](../.env.example)
+The [README](../../README.md#redis-support-phase-6-awaiting-review) and [.env.example](../../.env.example)
 list all settings and bounds. Redis URLs accept redis:// or rediss:// with a numeric database
 path; query/fragment parameters are rejected to prevent timeout/security-option overrides.
 
@@ -300,7 +300,7 @@ Eight added files:
 - backend/scripts/smoke_redis.py
 - backend/tests/unit/test_redis_runtime.py
 - backend/tests/integration/test_redis_support.py
-- docs/phase-6-validation.md
+- docs/validations/phase-6-validation.md
 - docs/phase-explanations/phase-6-explanation.md
 
 Modified files:

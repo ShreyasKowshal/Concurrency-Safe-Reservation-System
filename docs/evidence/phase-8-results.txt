@@ -92,4 +92,4 @@ Chromium: 8 passed in 42.7 seconds; approved captures preserved.
 Bounded 503 investigation: two unchanged five-target runs passed in 17.94 and 17.64 seconds. Temporary error observer saw no database-503 event; current PostgreSQL log interval had no timeout/connection-limit/unexpected-shutdown messages. Original 503 cause remains unproven. No assertions/timeouts relaxed.
 Normal stop/start retained database identity/table counts and .env. Worker smoke: 5 expired, allocation 0, 3 HTTP checks. Reservation smoke: 35 checks with counts restored.
 Isolated recovery passed; Redis available/outage/recovered each 13 checks, 1 expiration, 0 invariant mismatches. Read-only SQL categories all zero.
-Full finalization details: docs/phase-8-validation.md section 20. Published SHA/hosted CI provenance: docs/PROJECT_HANDOFF.md.
+Full finalization details: docs/validations/phase-8-validation.md section 20. Published SHA/hosted CI provenance: docs/PROJECT_HANDOFF.md.

@@ -266,7 +266,7 @@ with event-first cleanup locking. It never truncates development tables or print
 - `backend/tests/unit/test_worker_runtime.py`
 - `backend/tests/integration/test_worker.py`
 - `backend/tests/integration/test_worker_processes.py`
-- `docs/phase-5-validation.md`
+- `docs/validations/phase-5-validation.md`
 - `docs/phase-explanations/phase-5-explanation.md`
 
 **Sixteen modified files:**

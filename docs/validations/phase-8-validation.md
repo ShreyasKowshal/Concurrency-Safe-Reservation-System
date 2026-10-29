@@ -252,7 +252,7 @@ Status names and polite messages remain present; timer seconds are not announced
 Seven real PNGs were captured with account-address masks and visually inspected. An initial
 discovery shot captured loading; the test was strengthened to wait for an enabled refresh
 button and a real card, then all eight journeys/captures were rerun successfully.
-See [evidence provenance](evidence/README.md). This is not manual screen-reader verification,
+See [evidence provenance](../evidence/README.md). This is not manual screen-reader verification,
 formal WCAG certification, physical-device testing or Firefox/Safari coverage.
 
 ## 13. Regression commands and observed results
@@ -394,7 +394,7 @@ A mocked-Docker negative control returned failure on config and success on final
 the recovery verifier's caller still observed exit 1. This verifies the failure-propagation
 fix without stopping real services. Six Mermaid diagrams rendered as SVG in actual Chromium.
 All seven PNGs were inspected; the populated discovery recapture replaced the loading shot.
-Sanitized output and image hashes are in [phase-8-results.txt](evidence/phase-8-results.txt).
+Sanitized output and image hashes are in [phase-8-results.txt](../evidence/phase-8-results.txt).
 
 ## 18. Complete changed-file manifest
 
@@ -436,7 +436,7 @@ PNG artifacts. Ignored logs/tools/build caches are excluded. No file was staged.
 | Added | `docs/evidence/organizer-dashboard.png` | Real Chromium screenshot; account identity masked; source documented. |
 | Added | `docs/evidence/phase-8-results.txt` | Sanitized observed outcomes, failures, commands and image hashes. |
 | Added | `docs/evidence/reservation-history.png` | Real Chromium screenshot; account identity masked; source documented. |
-| Added | `docs/phase-8-validation.md` | Complete implementation, verification, audit, limitations and review manifest. |
+| Added | `docs/validations/phase-8-validation.md` | Complete implementation, verification, audit, limitations and review manifest. |
 | Added | `docs/phase-explanations/phase-8-explanation.md` | Twelve-section beginner explanation. |
 | Modified | `docs/phases.md` | Owner-revised localhost-only Phase 8 acceptance scope. |
 | Modified | `docs/security.md` | Local fixture/isolation guards and future configuration boundary. |

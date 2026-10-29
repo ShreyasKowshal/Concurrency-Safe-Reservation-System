@@ -2,7 +2,7 @@
 
 This guide describes the Phase 3 backend implementation prepared for review on top of
 commit `9dc8f86f21546499dc10572c65938acff8df68a5`. It has not been committed or pushed.
-The [validation report](../phase-3-validation.md) records actual verification results.
+The [validation report](../validations/phase-3-validation.md) records actual verification results.
 The [API contract](../contracts/api.md) contains the complete field and lifecycle rules.
 The Phase 1 and Phase 2 explanations remain historical descriptions of those phases.
 
@@ -259,7 +259,7 @@ reservation data; that is not a finished booking service or final-seat race benc
 
 ## 9. Testing and verification
 
-The [Phase 3 validation report](../phase-3-validation.md) is the source for final commands,
+The [Phase 3 validation report](../validations/phase-3-validation.md) is the source for final commands,
 counts, and exit statuses. It distinguishes the final complete run from earlier development
 attempts. Existing Phase 1/2 validation reports remain unchanged historical evidence.
 

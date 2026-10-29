@@ -13,7 +13,7 @@ is completed/success: backend, frontend and Compose all passed. Local finalizati
 The owner explicitly approved implementation publication and this separate handoff update.
 The handoff commit's own SHA, synchronization and independent hosted CI are verified separately
 in the finalization report; implementation CI is not attributed to an untested documentation SHA.
-[Phase 8 validation](phase-8-validation.md) preserves the original prepublication evidence,
+[Phase 8 validation](validations/phase-8-validation.md) preserves the original prepublication evidence,
 the supplemental 503 failure and its bounded investigation, plus fresh finalization gates.
 
 Repository: [Concurrency-Safe-Reservation-System](https://github.com/ShreyasKowshal/Concurrency-Safe-Reservation-System).
@@ -179,14 +179,14 @@ suite retains earlier behaviors; counts must not be added together as independen
 
 | Phase | Completed scope | Final recorded tests | Source |
 | --- | --- | --- | --- |
-| 1 | Monorepo, configuration, health backend/UI, Compose, Alembic scaffolding, CI, contracts | 24 passed: 22 unit/contract + 2 real PostgreSQL; exit 0 | [Validation](phase-1-validation.md), [explanation](phase-explanations/phase-1-explanation.md) |
-| 2 | Five tables, initial migration, sessions/auth/CSRF/roles/admin CLI | 170 passed: 54 unit/contract + 116 PostgreSQL; exit 0 | [Validation](phase-2-validation.md), [explanation](phase-explanations/phase-2-explanation.md) |
-| 3 | Public/owner event reads, draft create/edit/capacity/publish/close, event locks | 323 passed: 107 unit/contract + 216 PostgreSQL; exit 0 | [Validation](phase-3-validation.md), [explanation](phase-explanations/phase-3-explanation.md) |
-| 4 | Holds, confirmation/cancellation, request-time expiry, durable idempotency, private history/detail, public availability | 417 passed: 114 unit/contract + 303 PostgreSQL; exit 0 | [Validation](phase-4-validation.md), [explanation](phase-explanations/phase-4-explanation.md) |
-| 5 | Independent PostgreSQL expiry worker, bounded backlog catch-up, multi-worker/restart recovery, ordered index | 474 passed: 130 unit/contract + 344 PostgreSQL; exit 0 | [Validation](phase-5-validation.md), [explanation](phase-explanations/phase-5-explanation.md) |
-| 6 | Atomic multi-process Redis quotas, public detail cache, outage policies, bounded connection behavior | 540 passed: 153 unit/contract + 387 PostgreSQL/Redis integration; exit 0 | [Validation](phase-6-validation.md), [explanation](phase-explanations/phase-6-explanation.md) |
-| 7 | Full attendee/organizer UI and owner booking snapshot | 545 backend, 71 frontend, 7 Chromium journeys; exit 0 | [Validation](phase-7-validation.md), [explanation](phase-explanations/phase-7-explanation.md) |
-| 8 | Local startup/migration gating, safe demos, persistence/recovery, security review and portfolio evidence | 555 backend, 71 frontend, 8 Chromium journeys; hosted backend/frontend/Compose green | [Validation](phase-8-validation.md), [explanation](phase-explanations/phase-8-explanation.md) |
+| 1 | Monorepo, configuration, health backend/UI, Compose, Alembic scaffolding, CI, contracts | 24 passed: 22 unit/contract + 2 real PostgreSQL; exit 0 | [Validation](validations/phase-1-validation.md), [explanation](phase-explanations/phase-1-explanation.md) |
+| 2 | Five tables, initial migration, sessions/auth/CSRF/roles/admin CLI | 170 passed: 54 unit/contract + 116 PostgreSQL; exit 0 | [Validation](validations/phase-2-validation.md), [explanation](phase-explanations/phase-2-explanation.md) |
+| 3 | Public/owner event reads, draft create/edit/capacity/publish/close, event locks | 323 passed: 107 unit/contract + 216 PostgreSQL; exit 0 | [Validation](validations/phase-3-validation.md), [explanation](phase-explanations/phase-3-explanation.md) |
+| 4 | Holds, confirmation/cancellation, request-time expiry, durable idempotency, private history/detail, public availability | 417 passed: 114 unit/contract + 303 PostgreSQL; exit 0 | [Validation](validations/phase-4-validation.md), [explanation](phase-explanations/phase-4-explanation.md) |
+| 5 | Independent PostgreSQL expiry worker, bounded backlog catch-up, multi-worker/restart recovery, ordered index | 474 passed: 130 unit/contract + 344 PostgreSQL; exit 0 | [Validation](validations/phase-5-validation.md), [explanation](phase-explanations/phase-5-explanation.md) |
+| 6 | Atomic multi-process Redis quotas, public detail cache, outage policies, bounded connection behavior | 540 passed: 153 unit/contract + 387 PostgreSQL/Redis integration; exit 0 | [Validation](validations/phase-6-validation.md), [explanation](phase-explanations/phase-6-explanation.md) |
+| 7 | Full attendee/organizer UI and owner booking snapshot | 545 backend, 71 frontend, 7 Chromium journeys; exit 0 | [Validation](validations/phase-7-validation.md), [explanation](phase-explanations/phase-7-explanation.md) |
+| 8 | Local startup/migration gating, safe demos, persistence/recovery, security review and portfolio evidence | 555 backend, 71 frontend, 8 Chromium journeys; hosted backend/frontend/Compose green | [Validation](validations/phase-8-validation.md), [explanation](phase-explanations/phase-8-explanation.md) |
 
 ### Phase 1: foundation
 
@@ -298,7 +298,7 @@ unit/contract and 344 real PostgreSQL integration cases. A dedicated integration
 confirmation/cancellation/capacity/request-cleanup races, exact deadlines, interruption,
 restart/backlog, database outage, and SQL reconciliation. Ruff, Alembic head/current/drift,
 API contract, frontend checks/build, Compose, live worker/API smoke, and invariant checks
-passed as recorded in [Phase 5 validation](phase-5-validation.md).
+passed as recorded in [Phase 5 validation](validations/phase-5-validation.md).
 
 The final correctness audit found zero BLOCKER/HIGH issues. Its MEDIUM slow-backlog finding
 was resolved with bounded productive catch-up and busy-page scan-ahead. Its LOW process-test
@@ -331,7 +331,7 @@ Redis cleanup fails, and preserving valid SQL detail output beyond cache input l
 Focused real Redis/PostgreSQL, fault, and repeated race tests cover those fixes. The full
 Phase 6 suite passed **540/540**: 153 unit/contract and 387 integration, including 43 new
 real Redis/PostgreSQL integration cases and 23 new unit cases. See
-[Phase 6 validation](phase-6-validation.md) and
+[Phase 6 validation](validations/phase-6-validation.md) and
 [explanation](phase-explanations/phase-6-explanation.md) for test commands and limits.
 
 Implementation commit `7d7c705b438437a2a63ccd7d9fbffe4d54628f17` changed 32 files:
@@ -393,7 +393,7 @@ The journeys exercise attendee and organizer forms, two independent last-seat se
 deadline rejection, lost-response same-key recovery, keyboard/focus behavior, axe checks,
 390/768/1440-pixel layouts, cross-account denial, and SQL reconciliation. Live reservation
 smoke passed 35 HTTP checks with table counts restored. The source self-audit resolved one
-HIGH and several MEDIUM/LOW findings; [Phase 7 validation](phase-7-validation.md) records
+HIGH and several MEDIUM/LOW findings; [Phase 7 validation](validations/phase-7-validation.md) records
 each correction and the local commands. Hosted
 [Foundation CI](https://github.com/ShreyasKowshal/Concurrency-Safe-Reservation-System/actions/runs/40505497985)
 passed for exact correction SHA `10be01a591567b2198b4dd38db8e96047ff872e4`:
@@ -894,7 +894,7 @@ Defaults: cache enabled with TTL 15 seconds (range 1-60); rate limits enabled wi
 timeout 0.2 seconds (each range 0.05-2); pool maximum 10 (range 1-40), no automatic
 Redis command retries. One pending OS DNS lookup is shared by an API client; callers and
 shutdown remain bounded even if that lookup itself cannot be cancelled. Redis restart
-discards ephemeral quotas/cache. See [Phase 6 validation](phase-6-validation.md) and
+discards ephemeral quotas/cache. See [Phase 6 validation](validations/phase-6-validation.md) and
 [security](security.md) for exact settings and failure policies.
 
 ## I. Completed Phase 8 and optional future hosting
@@ -981,7 +981,7 @@ publication and its own hosted run must be verified independently, as reported a
 
 - [Demo guide](DEMO_GUIDE.md): setup, five-minute walkthrough, deeper tests and troubleshooting.
 - [Interview guide](INTERVIEW_GUIDE.md): accurate concurrency/retry/worker/Redis explanations.
-- [Phase 8 validation](phase-8-validation.md): original/fresh evidence, failures and audit.
+- [Phase 8 validation](validations/phase-8-validation.md): original/fresh evidence, failures and audit.
 - [Phase 8 explanation](phase-explanations/phase-8-explanation.md): twelve beginner sections.
 - [Evidence](evidence/README.md): capture provenance, reproduction and sanitized output/hashes.
 - [Future deployment](FUTURE_DEPLOYMENT.md): optional hosting work, clearly not executed.
@@ -1110,7 +1110,7 @@ prerequisites and must not be staged. Never replace PostgreSQL with SQLite to av
 | Repository/branch | [CSRS on GitHub](https://github.com/ShreyasKowshal/Concurrency-Safe-Reservation-System), main |
 | Phase 5 historical implementation | `03ea3108999f051887e6788e26ed9342e08a7e1b`; 474 tests; [green CI](https://github.com/ShreyasKowshal/Concurrency-Safe-Reservation-System/actions/runs/40293310608) |
 | Phase 6 implementation commit | `7d7c705b438437a2a63ccd7d9fbffe4d54628f17` — `feat: integrate Redis rate limiting and event caching` |
-| Phase 6 manifest | 32 files: 8 added, 24 modified; see [manifest](phase-6-validation.md#changed-file-manifest) |
+| Phase 6 manifest | 32 files: 8 added, 24 modified; see [manifest](validations/phase-6-validation.md#changed-file-manifest) |
 | CI correction commit | `d188a7e6279818a8e702bbd682fcd97765a8cd34` — `ci: harden backend readiness probe after container restart`; CI workflow only |
 | Final Phase 6 source suite | 540 passed: 153 unit/contract + 387 PostgreSQL/Redis integration; 66 new Phase 6 tests |
 | Final audit | Zero BLOCKER/HIGH; one MEDIUM and three LOW self-audit findings resolved with focused/repeated checks |
@@ -1201,7 +1201,7 @@ For every phase maintain these separate files:
 
 | Document convention | Contents |
 | --- | --- |
-| `docs/phase-X-validation.md` | Actual scope/changed-file manifest, endpoints/security/transactions, commands/environment, test counts and exit statuses, migrations, HTTP/CI evidence, limitations, deferred work, acceptance and Git state at that review |
+| `docs/validations/phase-X-validation.md` | Actual scope/changed-file manifest, endpoints/security/transactions, commands/environment, test counts and exit statuses, migrations, HTTP/CI evidence, limitations, deferred work, acceptance and Git state at that review |
 | `docs/phase-explanations/phase-X-explanation.md` | Beginner-friendly WHAT/HOW/WHY, technologies, flows/diagrams/examples, accurate paths/APIs/schema, security/correctness, test meaning, deferred work, interview Q&A/tradeoffs, simple summary |
 
 The explanations use twelve numbered sections: phase overview; what we implemented;
@@ -1220,13 +1220,13 @@ Recommended next-conversation reading order:
    then Git status/log and the current CI result.
 2. [Concurrency protocol](concurrency.md), [API contract](contracts/api.md),
    [database design](database.md), [security](security.md), and [decisions](decisions.md).
-3. [Phase 8 validation](phase-8-validation.md), [demo guide](DEMO_GUIDE.md),
+3. [Phase 8 validation](validations/phase-8-validation.md), [demo guide](DEMO_GUIDE.md),
    [interview guide](INTERVIEW_GUIDE.md), and [future deployment plan](FUTURE_DEPLOYMENT.md).
-   Then [Phase 7 validation](phase-7-validation.md), including browser journeys, owner dashboard,
+   Then [Phase 7 validation](validations/phase-7-validation.md), including browser journeys, owner dashboard,
    self-audit, and exact-commit CI evidence, and its
    [explanation](phase-explanations/phase-7-explanation.md). Read
-   [Phase 6 validation](phase-6-validation.md), [Phase 5 validation](phase-5-validation.md),
-   and [Phase 4 validation](phase-4-validation.md) with their explanations for Redis, worker,
+   [Phase 6 validation](validations/phase-6-validation.md), [Phase 5 validation](validations/phase-5-validation.md),
+   and [Phase 4 validation](validations/phase-4-validation.md) with their explanations for Redis, worker,
    and booking guarantees; D links earlier records.
 4. Actual frontend router, central API client, session context, pages, Playwright journeys,
    package scripts, Vite proxy, and backend dashboard route. Preserve the PostgreSQL

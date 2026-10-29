@@ -9,7 +9,7 @@ worker expires holds. Redis supports rate limiting and public metadata, so losin
 does not let the system oversell. I demonstrate it locally with Compose and real database tests."
 
 Use [the demo guide](DEMO_GUIDE.md) to show it and
-[validation](phase-8-validation.md) for measured evidence. Do not describe it as cloud-deployed
+[validation](validations/phase-8-validation.md) for measured evidence. Do not describe it as cloud-deployed
 or quote a production throughput number.
 
 ## System overview

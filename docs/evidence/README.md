@@ -41,7 +41,8 @@ forms with entered credentials.
 ## Correctness and operational evidence
 
 [phase-8-results.txt](phase-8-results.txt) records sanitized observed outcomes and reproduction
-commands. [Phase 8 validation](../phase-8-validation.md) provides the complete test/audit table,
+commands. [Phase 8 validation](../validations/phase-8-validation.md) provides the complete
+test/audit table,
 limitations, changed-file manifest and acceptance checklist. Keep the output's workload scope:
 two API processes and a fixed 50/100-attempt correctness test do not measure production scale.
 

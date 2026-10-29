@@ -2,7 +2,7 @@
 
 This guide describes the Phase 4 implementation awaiting review. No Phase 4 commit or push
 has been authorized. Read the [Phase 3 explanation](phase-3-explanation.md) for event management
-and the [validation report](../phase-4-validation.md) for commands and actual results.
+and the [validation report](../validations/phase-4-validation.md) for commands and actual results.
 
 ## 1. Phase overview
 

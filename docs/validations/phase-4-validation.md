@@ -8,7 +8,7 @@ This document records final pre-commit evidence; publication was authorized on 2
 after strengthening the audit's one MEDIUM test-coverage finding. The final task report records
 the resulting commit, push, remote equality, and GitHub Actions status.
 No worker, Redis integration, business UI, or deployment was implemented.
-The historical [handoff](PROJECT_HANDOFF.md) and Phase 1-3 reports remain unchanged.
+The historical [handoff](../PROJECT_HANDOFF.md) and Phase 1-3 reports remain unchanged.
 
 ## Features and endpoint contracts
 
@@ -344,7 +344,7 @@ All final tests pass. No unresolved Phase 4 correctness failure is known from th
 - `backend/tests/integration/test_reservations.py`
 - `backend/tests/integration/test_reservation_transactions.py`
 - `backend/tests/unit/test_reservation_contract.py`
-- `docs/phase-4-validation.md`
+- `docs/validations/phase-4-validation.md`
 - `docs/phase-explanations/phase-4-explanation.md`
 
 **21 modified files:**

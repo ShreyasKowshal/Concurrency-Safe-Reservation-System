@@ -30,5 +30,5 @@ Fixtures create/drop only generated csrs_phase2_*_test databases and scoped Redi
 The separate recovery verifier uses compose.validation.yaml and a fresh project/volume
 without host ports. It verifies isolation before downtime experiments and never deletes volumes.
 
-See [demo operations](../docs/DEMO_GUIDE.md), [local validation](../docs/phase-8-validation.md)
+See [demo operations](../docs/DEMO_GUIDE.md), [local validation](../docs/validations/phase-8-validation.md)
 and [future deployment planning](../docs/FUTURE_DEPLOYMENT.md). Cloud hosting is deferred.

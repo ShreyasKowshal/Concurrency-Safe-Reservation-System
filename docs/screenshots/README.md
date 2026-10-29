@@ -333,9 +333,9 @@ This is a browser-level demonstration, not proof of precise simultaneity or
 production traffic performance. Separate, historical two-process automated tests
 record **1 accepted / 49 EVENT_FULL out of 50** and **20 accepted / 80 EVENT_FULL
 out of 100**, with SQL reconciliation. See [Phase 8 concurrency
-evidence](../phase-8-validation.md#9-concurrency-idempotency-and-recovery)
+evidence](../validations/phase-8-validation.md#9-concurrency-idempotency-and-recovery)
 and its [follow-up and recorded supplemental
-failure](../phase-8-validation.md#17-final-follow-up-evidence).
+failure](../validations/phase-8-validation.md#17-final-follow-up-evidence).
 Those larger workloads were not rerun for this documentation task.
 
 ### One seat available

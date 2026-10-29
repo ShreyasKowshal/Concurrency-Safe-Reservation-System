@@ -192,7 +192,7 @@ backend/src/csrs/events/service.py
 backend/tests/integration/test_event_transactions.py
 backend/tests/integration/test_events.py
 backend/tests/unit/test_event_inputs.py
-docs/phase-3-validation.md
+docs/validations/phase-3-validation.md
 docs/phase-explanations/phase-3-explanation.md
 ```
 

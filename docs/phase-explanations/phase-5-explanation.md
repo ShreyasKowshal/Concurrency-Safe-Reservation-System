@@ -2,7 +2,7 @@
 
 This describes the local Phase 5 implementation awaiting external review. No Phase 5 commit
 or push is authorized. Read [Phase 4](phase-4-explanation.md) for reservation commands and
-[Phase 5 validation](../phase-5-validation.md) for actual verification evidence and limitations.
+[Phase 5 validation](../validations/phase-5-validation.md) for actual verification evidence and limitations.
 
 ## 1. Phase overview
 

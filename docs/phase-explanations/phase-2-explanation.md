@@ -4,7 +4,7 @@ This guide describes the Phase 2 implementation committed as
 `4b7aaa8d4628b55b122692a62f0ff48b61d87410`.
 Read [Phase 1 explained](phase-1-explanation.md) first if the development setup is unfamiliar.
 
-The existing [Phase 2 validation report](../phase-2-validation.md) contains detailed evidence.
+The existing [Phase 2 validation report](../validations/phase-2-validation.md) contains detailed evidence.
 It was written before the implementation commit and retains that historical review wording.
 The implementation was subsequently approved, committed, and pushed. This explanation does
 not move or edit that record.
@@ -561,7 +561,7 @@ Backend lint/format checks, dependency consistency, Compose startup, TypeScript 
 and the Vite build passed. The validation report records the pre-commit local evidence;
 it should not be treated as a live GitHub Actions status page.
 
-Read the [existing validation report](../phase-2-validation.md) for exact commands/results.
+Read the [existing validation report](../validations/phase-2-validation.md) for exact commands/results.
 No runtime test suite was rerun merely to write this explanation, and no new performance
 or overbooking claim follows from these documentation changes.
 

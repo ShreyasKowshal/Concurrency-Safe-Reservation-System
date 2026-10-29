@@ -8,7 +8,7 @@ mistaken for features that already existed in Phase 1.
 
 For the next phase, read [Phase 2 explained](phase-2-explanation.md).
 For recorded commands and results, use the existing
-[Phase 1 validation report](../phase-1-validation.md). This guide explains that evidence;
+[Phase 1 validation report](../validations/phase-1-validation.md). This guide explains that evidence;
 it does not replace or reproduce the report.
 
 ## 1. Phase overview
@@ -363,7 +363,7 @@ it was not a business-data backup/restore or disaster-recovery test.
 An earlier host-only run had skipped the database tests because Docker was unavailable.
 The final 24-test PostgreSQL run resolved that limitation.
 
-See the [original validation report](../phase-1-validation.md) for detailed evidence.
+See the [original validation report](../validations/phase-1-validation.md) for detailed evidence.
 Running the current repository's suite executes the expanded Phase 2 tests, not the historical
 24-test snapshot. Neither test count is a throughput benchmark or proof of booking correctness.
 

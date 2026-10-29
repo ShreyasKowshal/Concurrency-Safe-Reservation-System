@@ -1,7 +1,7 @@
 # Phase 6 explained: Redis support without changing reservation authority
 
 This describes local Phase 6 work awaiting external review. Nothing is committed or pushed.
-The [validation report](../phase-6-validation.md) records actual results and limitations.
+The [validation report](../validations/phase-6-validation.md) records actual results and limitations.
 The project handoff remains the approved Phase 5 snapshot.
 
 ## 1. Phase overview

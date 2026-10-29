@@ -13,10 +13,11 @@ index-backed cleanup, and recovery tests. Phase 6 adds Redis quotas and public e
 caching; Phases 1-7 are committed. Phase 7 adds the full React business UI and owner-only
 booking snapshot. Phase 8 adds local startup/migration gating, recovery verification and
 portfolio guides. Cloud deployment remains **deferred future work**.
-See [Phase 4 validation](phase-4-validation.md) and [Phase 5 validation](phase-5-validation.md)
-for historical PostgreSQL evidence; [Phase 6 validation](phase-6-validation.md) records Redis
-integration and its failure policies. [Phase 7 validation](phase-7-validation.md) records the
-frontend evidence. [Phase 8 validation](phase-8-validation.md) records current local checks.
+See [Phase 4 validation](validations/phase-4-validation.md) and
+[Phase 5 validation](validations/phase-5-validation.md) for historical PostgreSQL evidence;
+[Phase 6 validation](validations/phase-6-validation.md) records Redis integration and its failure
+policies. [Phase 7 validation](validations/phase-7-validation.md) records the
+frontend evidence. [Phase 8 validation](validations/phase-8-validation.md) records current local checks.
 The handoff preserves phase history and publication/CI provenance. Its older cloud roadmap
 is superseded by the owner's local-only Phase 8 scope.
 
@@ -310,7 +311,7 @@ renew old data indefinitely. The fresh publication gate prevents a cached draft/
 from becoming public. Admission and advisory availability retain their PostgreSQL rules.
 Cache hits avoid loading the full description but still query visibility; no latency speedup
 or production SLA is claimed. See [README configuration](../README.md#redis-support-phase-6-awaiting-review)
-and [Phase 6 validation](phase-6-validation.md) for keys, limits, tests, and recovery evidence.
+and [Phase 6 validation](validations/phase-6-validation.md) for keys, limits, tests, and recovery evidence.
 
 ## Phase 7 browser architecture
 

@@ -98,5 +98,5 @@ a sleeping web process can host the independently running worker or durable data
 7. Capture sanitized evidence and hosted CI results for the exact published artifact. Verify
    logs, alerts, costs and operating instructions before claiming public production readiness.
 
-Local results in [Phase 8 validation](phase-8-validation.md) do not establish any of these
+Local results in [Phase 8 validation](validations/phase-8-validation.md) do not establish any of these
 cloud-specific results. The current project is deliberately a locally demonstrated system.

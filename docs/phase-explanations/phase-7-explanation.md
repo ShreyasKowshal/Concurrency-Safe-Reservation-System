@@ -1,7 +1,7 @@
 # Phase 7 explained: a real browser experience for reliable reservations
 
 This phase is implemented locally and remains uncommitted for external review.
-The [validation report](../phase-7-validation.md) records exact evidence and limitations.
+The [validation report](../validations/phase-7-validation.md) records exact evidence and limitations.
 The project handoff deliberately remains the approved Phase 6 snapshot.
 
 ## 1. Phase overview

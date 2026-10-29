@@ -193,7 +193,7 @@ backend/tests/integration/test_migrations.py
 backend/tests/integration/test_schema.py
 backend/tests/unit/test_auth_crypto.py
 docs/contracts/api.openapi.yaml
-docs/phase-2-validation.md
+docs/validations/phase-2-validation.md
 ```
 
 22 modified files:

@@ -10,7 +10,7 @@ supports quotas and public metadata caching; PostgreSQL owns every allocation de
 
 **Phase 8 scope: local production readiness, final validation, and portfolio evidence.**
 The application runs on localhost. It is not cloud-deployed or production-load-tested.
-See [Phase 8 validation](docs/phase-8-validation.md) for local evidence and the
+See [Phase 8 validation](docs/validations/phase-8-validation.md) for local evidence and the
 [handoff](docs/PROJECT_HANDOFF.md) for publication and exact-commit CI provenance. The owner
 selected localhost instead of the older cloud roadmap; future public hosting remains optional.
 
@@ -30,40 +30,70 @@ selected localhost instead of the older cloud roadmap; future public hosting rem
 - React handles session restoration, uncertain retries, countdowns, reservation history,
   organizer event lifecycle, and owner-only booking snapshots.
 
-## Application Screenshots
+## System Architecture
 
-Captured from the locally running Docker application. CSRS runs locally via
-Docker Compose and is not publicly deployed. Browse the [complete screenshot gallery](docs/screenshots/README.md)
-for organizer workflows, reservation states, final-seat rejection, security, and responsive layouts.
+```mermaid
+flowchart TB
+    Browser["Attendee or organizer browser"]
+    Web["React + TypeScript frontend<br/>Served locally by Vite"]
+    API["FastAPI backend<br/>Authentication, events, reservations"]
+    PG[("PostgreSQL<br/>Authoritative reservations and capacity")]
+    Redis[("Redis<br/>Rate limits and public event metadata")]
+    Worker["Independent expiration worker"]
+    Browser --> Web
+    Web -->|"Same-origin /api proxy, cookies and CSRF"| API
+    API -->|"Durable transactions"| PG
+    API -->|"Quotas and metadata cache"| Redis
+    Worker -->|"Event locks and overdue-hold cleanup"| PG
+```
 
-| Landing page | Organizer booking dashboard |
-| --- | --- |
-| ![CSRS landing page](docs/screenshots/01-public/homepage-desktop.png) | ![Organizer dashboard with mixed booking statuses](docs/screenshots/03-organizer/bookings-multiple-statuses.png) |
-| Confirmed reservation | Final-seat rejection |
-| ![Confirmed reservation](docs/screenshots/04-reservations/reservation-confirmed.png) | ![Real final-seat rejection](docs/screenshots/05-concurrency/final-seat-rejected.png) |
-| Worker-recorded expiration | Explore the collection |
-| ![Reservation expired by the independent worker](docs/screenshots/04-reservations/reservation-expired.png) | [Full gallery](docs/screenshots/README.md) · [Coverage and limitations](docs/screenshots/COVERAGE.md) |
+The browser runs the React interface. Locally, Vite serves it and forwards API requests to
+FastAPI, which handles authentication, events, and reservations. PostgreSQL is the durable
+ledger for sessions, bookings, capacity, and retry outcomes. Redis supports rate limits and
+public-event metadata caching; it never owns seat inventory or reservation locks.
+The independent worker uses PostgreSQL to expire overdue holds without a browser request.
+A separate startup migration gate prepares the schema before the API and worker start.
 
-## Stack and architecture
+See [detailed architecture and diagrams](docs/architecture.md), [database design](docs/database.md),
+[security](docs/security.md), [API contracts](docs/contracts/api.md), and
+[engineering decisions](docs/decisions.md).
+
+## Reservation Workflow
+
+```mermaid
+flowchart TD
+    Browse["Discover a published event<br/>Request a temporary hold"]
+    Browse --> Validate["FastAPI: auth and CSRF<br/>Durable idempotency check"]
+    Validate --> Lock["PostgreSQL transaction<br/>SELECT FOR UPDATE"]
+    Lock --> Fresh["Recheck event and DB time<br/>Reclaim due holds"]
+    Fresh --> Available{"Seat available?"}
+    Available -->|"No"| Full["Commit EVENT_FULL<br/>No new allocation"]
+    Available -->|"Yes"| Held["Commit HELD + one seat<br/>and durable outcome"]
+    Held -->|"Confirm before deadline"| Confirmed["CONFIRMED<br/>Allocation unchanged"]
+    Held -->|"Cancel before deadline"| Cancelled["CANCELLED<br/>Release once"]
+    Held -->|"Hold deadline reached"| Expired["EXPIRED<br/>Release once"]
+    Confirmed -->|"Cancel before event start"| Cancelled
+    Worker["Independent expiration worker"] -->|"PostgreSQL event lock<br/>and due-hold transaction"| Expired
+```
+
+This diagram follows a new, valid hold request; matching retries recover the original stored
+outcome instead of allocating again. The event-row lock makes contenders for the last seat
+wait their turn. After the first transaction commits, the next sees the updated allocation
+and rejects a full event. The idempotency claim, reservation, capacity change, cleanup, and
+durable outcome share that PostgreSQL transaction and commit together. Confirmation keeps
+the existing seat; cancellation or expiration releases
+it only once. Every transition uses the shared event-lock protocol. The countdown is advisory;
+server-side database time and state determine expiration, and the worker can record it
+without user interaction.
+
+See the [complete transaction sequence](docs/architecture.md#concurrency-safe-reservation-workflow)
+and [concurrency and state rules](docs/concurrency.md).
+
+## Technology stack
 
 React 19 / TypeScript / Vite; Python 3.12 / FastAPI / SQLAlchemy / Psycopg / Alembic;
 PostgreSQL 17; Redis 7.4; Docker Compose; Pytest; Vitest / Testing Library;
 Playwright Chromium / axe; Ruff / Prettier; GitHub Actions.
-
-```mermaid
-flowchart LR
-    Browser[React browser] --> Vite[Local Vite server and same-origin API proxy]
-    Vite --> API[FastAPI: sessions, events, reservations]
-    API --> PG[(PostgreSQL: authoritative durable state)]
-    API --> Redis[(Redis: quotas and public metadata)]
-    Worker[Independent expiration worker] --> PG
-    Migrate[Serialized startup migration] --> PG
-```
-
-See [architecture and transaction diagrams](docs/architecture.md),
-[concurrency protocol](docs/concurrency.md), [schema](docs/database.md),
-[security contract](docs/security.md), [API contract](docs/contracts/api.md),
-and [engineering decisions](docs/decisions.md).
 
 ## Start locally
 
@@ -149,6 +179,9 @@ manual capture instructions and historical CI.
 
 ## Verify
 
+The [Phase 1–8 validation index](docs/validations/README.md) collects the historical reports.
+The commands below run the current local checks.
+
 Full backend suite with real PostgreSQL and Redis, using disposable test databases:
 
 ```powershell
@@ -200,13 +233,27 @@ migration, frontend format/test/build, Compose, reservation, Chromium, worker an
 and adds isolated recovery verification. Hosted CI does not run on uncommitted changes.
 Exact local results and commands are in the Phase 8 validation report.
 
+## Application Screenshots
+
+Captured from the locally running Docker application. CSRS runs locally via
+Docker Compose and is not publicly deployed. Browse the [complete screenshot gallery](docs/screenshots/README.md)
+for organizer workflows, reservation states, final-seat rejection, security, and responsive layouts.
+
+| Landing page | Organizer booking dashboard |
+| --- | --- |
+| ![CSRS landing page](docs/screenshots/01-public/homepage-desktop.png) | ![Organizer dashboard with mixed booking statuses](docs/screenshots/03-organizer/bookings-multiple-statuses.png) |
+| Confirmed reservation | Final-seat rejection |
+| ![Confirmed reservation](docs/screenshots/04-reservations/reservation-confirmed.png) | ![Real final-seat rejection](docs/screenshots/05-concurrency/final-seat-rejected.png) |
+| Worker-recorded expiration | Explore the collection |
+| ![Reservation expired by the independent worker](docs/screenshots/04-reservations/reservation-expired.png) | [Full gallery](docs/screenshots/README.md) · [Coverage and limitations](docs/screenshots/COVERAGE.md) |
+
 ## References and limitations
 
 - [Beginner-friendly Phase 8 explanation](docs/phase-explanations/phase-8-explanation.md)
-- [Phase 7 validation](docs/phase-7-validation.md) and [explanation](docs/phase-explanations/phase-7-explanation.md)
-- [Phase 6 Redis validation](docs/phase-6-validation.md) and [worker validation](docs/phase-5-validation.md)
-- [Phase 4 concurrency validation](docs/phase-4-validation.md), [Phase 2](docs/phase-2-validation.md)
-  and [foundation validation](docs/phase-1-validation.md)
+- [Phase 7 validation](docs/validations/phase-7-validation.md) and [explanation](docs/phase-explanations/phase-7-explanation.md)
+- [Phase 6 Redis validation](docs/validations/phase-6-validation.md) and [worker validation](docs/validations/phase-5-validation.md)
+- [Phase 4 concurrency validation](docs/validations/phase-4-validation.md), [Phase 2](docs/validations/phase-2-validation.md)
+  and [foundation validation](docs/validations/phase-1-validation.md)
 - [Infrastructure notes](infra/README.md) and [OpenAPI](docs/contracts/api.openapi.yaml)
 
 Event-level locks serialize writes to hot events. Availability/countdowns are advisory.

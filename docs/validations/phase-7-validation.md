@@ -276,7 +276,7 @@ Hosted Actions for these uncommitted changes are intentionally unverified.
 | Direct live/ready/docs/OpenAPI and frontend root/proxy readiness | Six HTTP 200 responses with supported localhost Host header |
 | One-statement global SQL reconciliation | Zero counter/bound mismatches, duplicate active pairs, incomplete claims or remaining browser fixture users |
 | `docker compose exec -T postgres-test psql -U csrs_test -d csrs_test -tAc "SELECT count(*) FROM pg_database WHERE datname LIKE 'csrs_phase2_%_test'"` | Zero leftover generated test databases |
-| `markdownlint-cli2 --config .local/doc-validation/.markdownlint-cli2.jsonc README.md docs/architecture.md docs/contracts/api.md docs/decisions.md docs/security.md docs/phase-7-validation.md docs/phase-explanations/phase-7-explanation.md` | Seven Markdown files, zero errors |
+| `markdownlint-cli2 --config .local/doc-validation/.markdownlint-cli2.jsonc README.md docs/architecture.md docs/contracts/api.md docs/decisions.md docs/security.md docs/validations/phase-7-validation.md docs/phase-explanations/phase-7-explanation.md` | Seven Markdown files, zero errors |
 | `node .local/doc-validation/check-mermaid.mjs docs/architecture.md` | All four diagrams parsed |
 | `python .local/phase-7-hygiene.py` | All changed-file local links/fragments valid; no private-key/AWS/GitHub/OpenAI token-pattern matches; no generated-artifact paths; 45 files, zero staged |
 | `git diff --check`; baseline-domain/handoff `git diff --exit-code` | Passed; handoff, auth/reservation/worker services, migrations and Python lock unchanged |
@@ -298,7 +298,7 @@ Added:
 - `backend/scripts/frontend_fixture.py`
 - `backend/src/csrs/events/dashboard.py`
 - `backend/tests/integration/test_dashboard.py`
-- `docs/phase-7-validation.md`
+- `docs/validations/phase-7-validation.md`
 - `docs/phase-explanations/phase-7-explanation.md`
 - `frontend/e2e/journeys.spec.ts`
 - `frontend/playwright.config.ts`

@@ -1,7 +1,7 @@
 # Phase 8 explained: a reproducible local demonstration
 
 This is the final planned implementation phase. The
-[validation report](../phase-8-validation.md) records local results and finalization checks;
+[validation report](../validations/phase-8-validation.md) records local results and finalization checks;
 the [handoff](../PROJECT_HANDOFF.md) records publication and exact-commit hosted CI provenance.
 
 ## 1. Phase overview
