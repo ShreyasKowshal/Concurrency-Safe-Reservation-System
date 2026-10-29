@@ -36,13 +36,13 @@ available are the same implemented public state, represented once.
 
 ![Homepage desktop](01-public/homepage-desktop.png)
 
-Landing hero and logged-out navigation, captured from the local Docker application.
+Landing hero and logged-out navigation.
 
 ### Discovery published events
 
 ![Discovery published events](01-public/discovery-published-events.png)
 
-Four genuinely published synthetic events. Discovery returns to this identical four-card board after
+Four published synthetic events. Discovery returns to this identical four-card board after
 the lifecycle event is closed; both states were captured and verified.
 
 ### Event detail available
@@ -56,7 +56,7 @@ availability returns to this pixel-identical state; both moments were captured.
 
 ![Event fully booked](01-public/event-fully-booked.png)
 
-Public detail truthfully shows zero available seats and the Currently full notice.
+Public detail shows zero available seats and the Currently full notice.
 
 ### Discovery after publication
 
@@ -110,7 +110,7 @@ one HELD and one CONFIRMED, alongside one CANCELLED and one EXPIRED history row.
 
 ![Workspace empty](03-organizer/workspace-empty.png)
 
-The newly promoted synthetic organizer owns no events and sees the real empty workspace.
+The newly promoted synthetic organizer sees an empty workspace because they own no events.
 
 ### Workspace published and draft
 
@@ -128,7 +128,7 @@ The complete empty organizer event form.
 
 ![Create event completed](03-organizer/create-event-completed.png)
 
-Synthetic title, location, description, future schedule, and capacity entered in the real form.
+The form contains a synthetic title, location, description, future schedule, and capacity.
 
 ### Draft management
 
@@ -176,7 +176,7 @@ The workshop starts at capacity 20 with zero holds, confirmations, cancellations
 
 ![Bookings held](03-organizer/bookings-held.png)
 
-The organizer records one valid HELD reservation and one stored allocation.
+The dashboard shows one valid HELD reservation and one stored allocation.
 
 ### Bookings confirmed
 
@@ -188,14 +188,14 @@ Confirmation preserves one allocation and moves the reservation into Confirmed.
 
 ![Bookings cancelled](03-organizer/bookings-cancelled.png)
 
-Cancellation history remains while stored allocation returns to zero.
+The cancelled reservation remains in history; stored allocation returns to zero.
 
 ### Bookings expired
 
 ![Bookings expired](03-organizer/bookings-expired.png)
 
-The independent worker records one expiration, retains one confirmed seat, and reduces stored
-allocation to 1.
+After worker cleanup, the dashboard shows one recorded expiration, one retained confirmed seat,
+and stored allocation 1.
 
 ### Bookings multiple statuses
 
@@ -219,7 +219,7 @@ Closed management is read-only; its existing confirmed booking remains allocated
 
 ![Closed event edit read only](03-organizer/closed-event-edit-read-only.png)
 
-A direct edit deep link to a closed event displays the implemented read-only state.
+Opening a closed event's edit link directly shows the read-only state.
 
 ### Workspace published draft closed
 
@@ -257,7 +257,7 @@ A signed-in attendee sees available seats and the Hold one seat action.
 
 ![Held countdown](04-reservations/held-countdown.png)
 
-A real HELD reservation shows its identifier, deadline, countdown, Confirm, and Release actions.
+A HELD reservation shows its identifier, deadline, countdown, Confirm, and Release actions.
 
 ### Reservation confirmed
 
@@ -269,7 +269,7 @@ The server-confirmed reservation includes its confirmation timestamp and cancell
 
 ![Cancellation dialog](04-reservations/cancellation-dialog.png)
 
-The displayed confirmation dialog explains that cancellation releases the seat.
+The cancellation dialog explains that the seat will be released.
 
 ### Reservation cancelled
 
@@ -281,7 +281,7 @@ CANCELLED history includes both the earlier confirmation and actual cancellation
 
 ![Expiration before deadline](04-reservations/expiration-before-deadline.png)
 
-A second, genuine five-minute hold is left unconfirmed for natural worker expiration.
+A second five-minute hold is left unconfirmed so the worker can expire it naturally.
 
 ### Reservation expired
 
@@ -349,13 +349,13 @@ returns to this identical state. The three pixel-identical captures are stored o
 
 ![Winner held](05-concurrency/winner-held.png)
 
-One real request returns 201 and creates the final-seat HELD reservation.
+One attendee's request returns 201 and creates the final-seat HELD reservation.
 
 ### Final seat rejected
 
 ![Final seat rejected](05-concurrency/final-seat-rejected.png)
 
-The other real request returns 409 EVENT_FULL; refreshed availability is zero.
+The other attendee's request returns 409 EVENT_FULL; refreshed availability is zero.
 
 ### Final seat comparison
 
@@ -393,7 +393,7 @@ no synthetic HTTP success/error body was supplied.
 
 ![Availability network error](06-errors-and-security/availability-network-error.png)
 
-A browser-only aborted availability read displays the real network-error notice and retry action.
+An availability read aborted only in this browser triggers the network-error notice and retry action.
 
 ### Capacity below allocations
 
@@ -411,7 +411,7 @@ Closed events are unavailable through public detail; no closed event is republis
 
 ![Event schedule validation](06-errors-and-security/event-schedule-validation.png)
 
-The form rejects an end time before the start, with a real validation message.
+The form rejects an end time before the start and displays a validation message.
 
 ### Lost response recovered
 
@@ -431,7 +431,7 @@ same-operation recovery.
 
 ![Organizer owner denied](06-errors-and-security/organizer-owner-denied.png)
 
-A second authenticated organizer receives the real privacy-preserving 404 for a foreign event and
+A second authenticated organizer receives a privacy-preserving 404 for another organizer's event and
 its booking snapshot; no owner data is exposed.
 
 ### Organizer role required
@@ -444,7 +444,7 @@ An authenticated attendee cannot enter the organizer workspace.
 
 ![Page not found](06-errors-and-security/page-not-found.png)
 
-The real React fallback route offers a return to discovery.
+The React fallback route offers a return to discovery.
 
 ### Reservation owner denied
 

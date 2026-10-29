@@ -1,12 +1,13 @@
 # Concurrency-Safe Reservation System (CSRS)
 
-An event reservation application built to answer a deceptively hard question: **what happens
-when many people try to book the last seat at the same time?** CSRS uses PostgreSQL row locks,
-atomic transactions, durable retry outcomes, and an independent expiration worker to keep
-reservation rows and allocated capacity consistent.
+CSRS is an event reservation application for attendees and organizers. Attendees can browse
+events and hold, confirm or cancel a seat; organizers manage events and view bookings.
 
-React provides attendee and organizer workflows backed by real FastAPI endpoints. Redis
-supports quotas and public metadata caching; PostgreSQL owns every allocation decision.
+The main engineering challenge is preventing overselling when several users request the last
+seat. PostgreSQL row locks and atomic transactions keep reservations and allocated capacity
+consistent across API processes. Durable idempotency handles retries after a lost response,
+and an independent worker expires holds. React calls FastAPI; Redis provides rate limiting
+and public metadata caching.
 
 **Phase 8 scope: local production readiness, final validation, and portfolio evidence.**
 The application runs on localhost. It is not cloud-deployed or production-load-tested.
@@ -16,16 +17,17 @@ selected localhost instead of the older cloud roadmap; future public hosting rem
 
 ## Engineering features
 
-- Event-row `SELECT FOR UPDATE` serializes admission across independent API processes.
+- Event-row `SELECT FOR UPDATE` serializes seat allocation across independent API processes.
 - One transaction commits the reservation, capacity counter, expiration cleanup, and durable
   idempotency outcome. Same-key retries recover from a lost response without another seat.
 - HELD, CONFIRMED, CANCELLED and EXPIRED have explicit state and deadline rules; database
-  constraints defend bounds and one active booking per user/event.
+  constraints enforce capacity bounds and one active booking per user/event.
 - Request-time cleanup and a separate PostgreSQL worker share the event-first lock protocol.
-  Worker crashes/restarts rediscover unfinished work; conditional transitions release once.
-- Redis quotas are atomic across processes. Public detail caching has SQL visibility checks,
+  On restart after a crash, the worker rediscovers unfinished work. Conditional transitions
+  release each seat only once.
+- Redis quotas are atomic across processes. Public event detail caching has SQL visibility checks,
   absolute TTLs and post-commit invalidation. Redis never locks or owns seats.
-- Argon2id passwords, opaque database sessions, HttpOnly cookies, synchronizer CSRF tokens,
+- Argon2id passwords, opaque database-backed sessions, HttpOnly cookies, synchronizer CSRF tokens,
   exact trusted origins, role/ownership checks and sanitized errors protect mutations.
 - React handles session restoration, uncertain retries, countdowns, reservation history,
   organizer event lifecycle, and owner-only booking snapshots.
@@ -79,12 +81,11 @@ flowchart TD
 This diagram follows a new, valid hold request; matching retries recover the original stored
 outcome instead of allocating again. The event-row lock makes contenders for the last seat
 wait their turn. After the first transaction commits, the next sees the updated allocation
-and rejects a full event. The idempotency claim, reservation, capacity change, cleanup, and
-durable outcome share that PostgreSQL transaction and commit together. Confirmation keeps
-the existing seat; cancellation or expiration releases
-it only once. Every transition uses the shared event-lock protocol. The countdown is advisory;
-server-side database time and state determine expiration, and the worker can record it
-without user interaction.
+and rejects a full event. The idempotency claim, reservation, capacity change, cleanup and
+durable outcome all commit in that PostgreSQL transaction. Confirmation keeps the existing
+seat; cancellation or expiration releases it only once. Every transition follows the shared
+event-lock protocol. The countdown is an estimate. Server-side database time and state decide
+whether a hold has expired; the worker can record that expiration without user interaction.
 
 See the [complete transaction sequence](docs/architecture.md#concurrency-safe-reservation-workflow)
 and [concurrency and state rules](docs/concurrency.md).
@@ -118,11 +119,11 @@ if (-not (Test-Path .env)) { Copy-Item .env.example .env }
 docker compose --profile worker up --build -d --wait --wait-timeout 180
 ```
 
-PostgreSQL becomes healthy, the one-shot `migrate` service upgrades Alembic and checks drift,
-then the API and worker start. The frontend waits for API health and has an HTTP health
-check. Migrations use a transaction/advisory lock; competing migration attempts time out
-visibly rather than racing schema writes. They run in the dedicated service, never each API
-process. Repeated startup preserves data. An exited migration container with code 0 is expected.
+Once PostgreSQL is healthy, the one-shot `migrate` service applies Alembic migrations and checks
+for schema drift. The API and worker then start; the frontend waits for API health and has its
+own HTTP health check. Migrations use a transaction/advisory lock, so competing attempts time
+out visibly rather than racing schema writes. They run in the dedicated service, never in each
+API process. Repeated startup preserves data. An exited migration container with code 0 is expected.
 
 | Address | Purpose |
 | --- | --- |
@@ -228,9 +229,9 @@ overdue worker recovery and Redis available/outage/recovery. It stops its projec
 and retains its volumes. It does not interrupt the normal `csrs` project or erase its data.
 Read-only invariant SQL is in [reconcile.sql](backend/scripts/reconcile.sql).
 
-[GitHub Actions](.github/workflows/ci.yml) retains backend lint/format/unit/integration,
+[GitHub Actions](.github/workflows/ci.yml) runs backend lint/format/unit/integration,
 migration, frontend format/test/build, Compose, reservation, Chromium, worker and Redis checks,
-and adds isolated recovery verification. Hosted CI does not run on uncommitted changes.
+plus isolated recovery verification. Hosted CI does not run on uncommitted changes.
 Exact local results and commands are in the Phase 8 validation report.
 
 ## Application Screenshots
@@ -256,11 +257,12 @@ for organizer workflows, reservation states, final-seat rejection, security, and
   and [foundation validation](docs/validations/phase-1-validation.md)
 - [Infrastructure notes](infra/README.md) and [OpenAPI](docs/contracts/api.openapi.yaml)
 
-Event-level locks serialize writes to hot events. Availability/countdowns are advisory.
-Correctness tests are not throughput benchmarks. Redis restart resets quotas/cache;
-new-session/auth operations fail closed during outages while authenticated commands/public
-reads continue through PostgreSQL. No automated backup/restore, public HTTPS, production
-monitoring, account recovery/MFA, retention schedule, payments or cloud infrastructure exists.
+Writes to a popular event take turns under its row lock. Availability and countdowns are
+advisory, and correctness tests are not throughput benchmarks. Restarting Redis resets its
+quotas and cache. During Redis outages, new anonymous sessions, login and registration fail
+closed; authenticated commands and public reads continue through PostgreSQL. No automated
+backup/restore, public HTTPS, production monitoring, account recovery/MFA, retention schedule,
+payments or cloud infrastructure exists.
 Chromium/axe checks do not establish full accessibility compliance.
 
 <!-- Historical reports link this stable fragment. -->

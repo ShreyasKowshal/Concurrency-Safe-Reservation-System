@@ -28,23 +28,24 @@ that path to FastAPI without rewriting the browser's Origin header. A future pub
 needs an explicitly implemented static/proxy tier or backend static serving on the same origin;
 neither public serving design has been deployed or verified.
 
-FastAPI handles transport/validation. Authentication/event/reservation services own transaction
-boundaries and
-authorization decisions. SQLAlchemy supplies synchronous sessions and database access.
-PostgreSQL owns durable users, sessions, events, reservations, capacity, and idempotency.
-Alembic owns schema evolution. Each request/worker transaction gets an independent session;
-sessions are never shared across threads or requests. No generic repository framework is needed.
+FastAPI handles HTTP requests and input validation. Authentication, event and reservation
+services control transaction boundaries and authorization decisions. SQLAlchemy provides
+synchronous database sessions and access through Psycopg. PostgreSQL durably stores users,
+sessions, events, reservations, capacity and idempotency records; Alembic manages schema changes.
+Each request/worker transaction gets an independent session; sessions are never shared across
+threads or requests. No generic repository framework is needed.
 
-Redis now handles atomic rate limits and short-lived public event detail metadata only.
+Redis handles atomic rate limits and short-lived public event detail metadata only.
 Its contents never authorize allocation, decide confirmation validity, or store durable
 idempotency. A synchronous RedisSupport adapter owns one lazy redis-py pool per API process.
 Business services retain PostgreSQL transactions; route adapters invoke Redis before business
 transactions or after a successful commit. No Redis call occurs under the event lock.
 
-The standalone expiration process uses the same backend image and shared transition as the API.
-Run `python -m csrs.worker` or the opt-in Compose worker service. It discovers overdue work
-in PostgreSQL. No Celery, broker, per-reservation timer, or in-process
-API scheduler is required. Multiple API processes must remain correct without Python mutexes.
+The expiration worker runs separately from the API, using the same backend image and shared
+expiration transition. Run `python -m csrs.worker` or the opt-in Compose worker service.
+It finds overdue holds directly in PostgreSQL, so cleanup does not depend on an API request.
+No Celery, broker, per-reservation timer or in-process API scheduler is required. Multiple
+API processes must remain correct without Python mutexes.
 
 ## Health and resource lifecycle
 
@@ -91,10 +92,10 @@ instead must be documented accurately. No cloud services are created in this pha
 
 ## Interview explanation
 
-The monolith keeps one deployable backend and one transaction boundary for the important work.
-Organizer and reservation writes serialize through the same PostgreSQL event-row lock.
-The event lock is deliberately a contention point for one event; unrelated events use different
-rows. We will measure the cost before considering a more complicated inventory design.
+The monolith keeps the backend in one deployable application. Organizer and reservation writes
+share a transaction protocol and serialize through the same PostgreSQL event-row lock.
+Competing writes for one event may wait on that lock; writes for unrelated events use different rows.
+Measure that contention before considering a more complicated inventory design.
 
 See [database design](database.md), [transaction protocol](concurrency.md),
 [CSRF/security contract](security.md), [API contract](contracts/api.md), and
@@ -216,15 +217,17 @@ sequenceDiagram
     Api-->>Client: Original HTTP status/body, no-store
 ```
 
-A flush sends SQL without committing. Business conflicts are values so useful expiration and
-the stored conflict can commit together. Security/validation exceptions and database failures
-roll back the new claim and changes. Missing/foreign resources return 404 without completing
-an outcome. No remote call or password hashing occurs inside this lock.
+A flush sends SQL without committing. The service returns business conflicts as values rather
+than raising exceptions, so expiration cleanup and the stored conflict can commit together.
+Security/validation exceptions and database failures roll back the new claim and changes.
+Missing/foreign resources return 404 without completing an outcome. No remote call or password
+hashing occurs inside this lock.
 
-The serialization point is the event row: if two users want the last seat, the waiter reads
-fresh committed capacity after the winner commits. Every admitted hold adds one counted row
-and one counter unit. Confirmation preserves the count; cancellation/expiry release only on
-an actual transition. The invariant includes overdue **persisted** HELD rows until cleanup:
+The event row determines the order of competing writes. If two users want the last seat, the
+waiting request reads fresh committed capacity after the winner commits. Every accepted hold
+adds one reservation row and increments the counter by one. Confirmation preserves the count;
+cancellation/expiry release only on an actual transition. The invariant includes overdue
+**persisted** HELD rows until cleanup:
 
 `allocated_seats = count(persisted HELD + CONFIRMED)`, within `[0, capacity]`.
 

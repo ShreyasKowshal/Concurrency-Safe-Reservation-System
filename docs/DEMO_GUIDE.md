@@ -2,7 +2,7 @@
 
 This guide demonstrates the localhost application. No cloud account, domain or hosting plan
 is needed. Read [Phase 8 validation](validations/phase-8-validation.md) for observed results and limits.
-Commands below start in the repository root. Do not erase the PostgreSQL volume.
+Run the commands below from the repository root. Do not erase the PostgreSQL volume.
 
 ## Prepare before the interview
 
@@ -18,21 +18,22 @@ Commands below start in the repository root. Do not erase the PostgreSQL volume.
    docker compose logs --tail 20 migrate worker
    ```
 
-4. Expect PostgreSQL, Redis, API and frontend healthy; worker running; migrate exited 0.
-   Worker progress is a separate signal: inspect `worker_cycle` JSON and committed expiration.
+4. Expect PostgreSQL, Redis, API and frontend to be healthy, the worker to be running,
+   and migrate to have exited with code 0. Check worker progress separately through
+   `worker_cycle` JSON and committed expiration.
 5. Open [the application](http://localhost:5173/),
    [API readiness](http://localhost:8000/api/v1/health/ready) and
    [API docs](http://localhost:8000/docs). Use localhost, matching the configured trusted origin.
 
 Startup copies `.env.example` only when `.env` is missing. It preserves local configuration
-and database data. PostgreSQL health precedes serialized migrations, then API/worker startup;
-frontend startup waits for API health. The default worker idle poll is 15 seconds and a hold
-lasts at most 300 seconds. They are configurable in `.env`.
+and database data. Startup waits for PostgreSQL health, runs serialized migrations, then
+starts the API and worker. The frontend waits for API health. The default worker idle poll is
+15 seconds and a hold lasts at most 300 seconds. They are configurable in `.env`.
 
 ## Create isolated sample data
 
-Choose and record a fresh demo scope once. This UUID identifies accounts created solely for
-the demonstration; it is not a password or access token.
+Generate a fresh demo scope and keep its UUID for the status and cleanup commands. It identifies
+accounts created solely for the demonstration; it is not a password or access token.
 
 ```powershell
 $demoScope = [guid]::NewGuid().ToString()
@@ -68,8 +69,8 @@ The Vite proxy means local browser users share that peer quota.
 | 0:40-1:50 | Organizer login, Organizer, Create an event, fill future schedule/capacity, Create draft, edit location/capacity, Publish | Role/ownership and lifecycle are enforced by FastAPI; publication makes the event public |
 | 1:50-2:40 | Attendee login in another browser profile, open that event, Hold one seat | A PostgreSQL transaction decides admission; the countdown is an estimate |
 | 2:40-3:20 | Reload the hold page, then Confirm reservation | The session and reservation persist; confirmation does not allocate a second seat |
-| 3:20-4:00 | Open My reservations, inspect the confirmed row | Private history comes from the backend, including after reload |
-| 4:00-4:40 | Organizer opens owned event dashboard | Stored allocation and valid/overdue holds are explicitly distinguished |
+| 3:20-4:00 | Open My reservations, inspect the confirmed row | The backend preserves private history across reloads |
+| 4:00-4:40 | Organizer opens owned event dashboard | The dashboard distinguishes stored allocation from valid and overdue holds |
 | 4:40-5:00 | Attendee cancels through the confirmation dialog; refresh availability | Cancellation releases once; displayed availability never promises a future allocation |
 
 When explaining closure, note that it prevents new holds without cancelling valid existing
@@ -84,7 +85,7 @@ access is explicit local administration.
 These commands use the existing real PostgreSQL test infrastructure, two independent Uvicorn
 processes, separate sessions and bounded pools. They create/drop only generated disposable
 databases on `postgres-test`; quotas are intentionally disabled in these SQL correctness
-fixtures so a 429 cannot masquerade as a capacity decision.
+fixtures so a 429 cannot be mistaken for a capacity decision.
 
 ```powershell
 docker compose --profile test run --build --rm backend-test python -m pytest tests/integration/test_reservation_transactions.py -k 'final_seats_across_two_api_processes or concurrent_duplicates_across_api_processes' -q -s -p no:cacheprovider
@@ -122,8 +123,8 @@ docker compose exec -T backend python scripts/smoke_worker.py verify $scenario
 docker compose logs --tail 20 worker
 ```
 
-The helper makes only its five generated holds overdue and cleans its six users/event after
-verification. It observes EXPIRED and allocated 0 before calling availability; an API read
+The helper makes only its five generated holds overdue and removes its six users and event
+after verification. It observes EXPIRED and allocated 0 before calling availability; an API read
 does not perform the expiration. Keep the UUID if interrupted and rerun verify after recovery.
 For ordinary data, wait naturally for the configured deadline instead of editing SQL.
 
@@ -133,7 +134,7 @@ For ordinary data, wait naturally for the configured deadline instead of editing
 ./scripts/verify-local.ps1
 ```
 
-This creates a separate project with a separate database volume and no published ports.
+The verifier creates a separate Compose project with its own database volume and no published ports.
 It exercises service restarts, ordinary down/up, a persistent authenticated session, exact
 same-key replay, preserved confirmed reservation, overdue worker recovery, and real Redis
 stop/cold API start/recovery. Read the PASS lines and JSON, not secrets or raw session state.
@@ -159,7 +160,7 @@ until a worker/request commits the matching transition; advisory availability ca
 
 ## Cleanup and shutdown
 
-Log out of demo browsers. Preview status, then remove only the selected demo scope:
+Log out of the demo accounts in each browser. Check the scope's status, then remove only that scope:
 
 ```powershell
 docker compose exec -T backend python -m csrs.demo status --scope $demoScope

@@ -1,9 +1,10 @@
 # Future cloud deployment: planning only
 
-The owner explicitly deferred cloud hosting. Phase 8 delivers a localhost demonstration and
-local verification. No provider, account, service, domain, subscription, deployment manifest,
-public database or cloud resource has been created. Nothing here is a claim of cloud validation.
-The older cloud requirements are superseded by the local-first Phase 8 decision.
+CSRS currently runs on localhost using Docker Compose. The owner deferred cloud hosting;
+Phase 8 covers the local demonstration and verification. No cloud provider account, service,
+domain, subscription, deployment manifest, public database or other cloud resource has been
+created. Cloud deployment has not been validated. This local-first Phase 8 decision supersedes
+the older cloud requirements.
 [PROJECT_HANDOFF.md](PROJECT_HANDOFF.md) records phase history and publication/CI provenance.
 
 ## Portable components already implemented
@@ -21,8 +22,8 @@ The older cloud requirements are superseded by the local-first Phase 8 decision.
 - Rejection of the repository's known public example database passwords in production settings.
   This guard is not a general assessment of password strength or infrastructure security.
 
-Reservation correctness does not require redesign for a hosted PostgreSQL connection.
-Configuration portability does not prove the chosen provider's networking/TLS behavior.
+Using a hosted PostgreSQL connection does not require redesigning the reservation protocol.
+Its configuration is portable, but the provider's networking and TLS behavior still need verification.
 
 ## Infrastructure that does not exist yet
 
@@ -39,8 +40,8 @@ Configuration portability does not prove the chosen provider's networking/TLS be
 | Secrets | Provider secret injection, rotation and restricted access; no values in Git, image layers, frontend artifacts, logs or screenshots |
 | Operations | Logs without PII/tokens, alerts, ownership, backup/restore, rollback, incident response, retention decisions and cost controls |
 
-The current backend image includes development/test tools; public runtime image hardening
-and container dependency scanning remain future work. Floating base image tags need a reviewed
+The current backend image includes development/test tools. A public runtime image still needs
+hardening and container dependency scanning. Floating base image tags need a reviewed
 update/digest policy. Current readiness probes SQL connectivity, not schema currency, Redis,
 backups or worker progress. Each needs an independent operational check.
 
@@ -71,8 +72,8 @@ zero-downtime deployment. Do not blindly downgrade production data for applicati
 
 ## Provider evaluation at the time of deployment
 
-Render or a similar platform may be evaluated later. This document intentionally makes no
-current price, free-tier, sleep policy or plan-availability claim. Recheck official provider
+Render or a similar platform may be evaluated later. Prices, free-tier terms, sleep policies
+and plan availability have not been verified here. Recheck official provider
 documentation and pricing when the owner chooses to host. Record the check date and plan.
 
 Verify persistent PostgreSQL storage, backups/restore access, Redis version/TLS/eviction,
