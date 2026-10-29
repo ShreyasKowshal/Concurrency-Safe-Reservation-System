@@ -1284,3 +1284,48 @@ across intentional reload/navigation or genuine session changes. Existing native
 and scroll anchoring may adjust offsets while content reloads. The project remains localhost-only;
 no cloud deployment occurred. All earlier Phase 1-8 text above is retained as historical evidence.
 The handoff publication's own SHA and independent hosted CI are verified in the final report.
+
+## O. Post-Phase-8 documentation: comprehensive screenshot gallery
+
+**Verified 2026-10-29.** The [application gallery](screenshots/README.md) contains
+**73 images across seven categories**: 72 genuine local Chromium captures and one
+labeled composition of two genuine final-seat captures. PNGs total **5,304,071 bytes**;
+the gallery folder, including its four Markdown documents, totals **5,363,965 bytes**.
+The root [README](../README.md#application-screenshots) adds five representative
+previews and links to the complete collection. Prior README content is preserved.
+
+Coverage includes public discovery, authentication, organizer create/edit/publish/
+capacity/close workflows, owner booking snapshots, HELD/CONFIRMED/CANCELLED/EXPIRED
+reservation lifecycles, actual worker expiration after the five-minute deadline,
+final-seat accepted/rejected outcomes, safe retry recovery, access controls, and
+1440/768/390px layouts. Category counts are public 5, authentication 4, organizer 20,
+reservations 12, concurrency 6, errors/security 10, and responsive 16.
+Screenshots demonstrate browser behavior; the 1-of-50 and 20-of-100 correctness
+evidence remains separately attributed to automated tests. Neither the screenshots
+nor those bounded workloads establish production traffic performance.
+
+Screenshot publication commit: `82da4c1979c747782a0535da28d9fe358ff36e2c`.
+Message: `docs: add comprehensive application screenshot gallery`.
+Its [exact-commit Foundation CI run](https://github.com/ShreyasKowshal/Concurrency-Safe-Reservation-System/actions/runs/40877559646)
+completed/success: **backend, frontend, and Compose all passed**.
+
+Final review decoded and visually inspected all images, matched the manifest,
+confirmed the comparison's unaltered source pixels, found no exposed credentials
+or private user data, and passed Markdown lint, links/anchors, and Git diff checks.
+GitHub's authenticated Markdown renderer confirmed five README images and all
+73 gallery images; remote Git blob hashes matched the published files. The
+repository remains private, so viewers need repository access.
+
+UUID-scoped demo accounts, events, reservations, and retry outcomes were cleaned
+safely. Fresh read-only comparisons preserved every original row across all five
+PostgreSQL tables and the cluster identity; reconciliation returned zero issues.
+The sole added session is an expired, unowned anonymous pre-session left for normal
+maintenance. Local Docker volumes were preserved; no destructive cleanup occurred.
+
+The [coverage matrix](screenshots/COVERAGE.md) records uncaptured public-empty and
+pagination states, natural eight-hour authentication expiry, and other boundaries.
+The minor mobile login heading join remains documented. The [capture report](screenshots/REPORT.md)
+preserves its prepublication review checkpoint; [MANIFEST.md](screenshots/MANIFEST.md)
+lists all final dimensions and hashes. No application/frontend/backend code,
+migration, dependency, security setting, or worker logic changed. **No public cloud
+deployment occurred.** Earlier handoff history is retained in full.
