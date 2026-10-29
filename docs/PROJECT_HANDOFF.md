@@ -1365,3 +1365,35 @@ join and existing screenshot coverage exclusions remain documented. Local Vite s
 unverified production performance, absent public HTTPS and backup/restore remain limitations.
 CSRS is complete as a frozen localhost portfolio project. This handoff append's own
 publication and hosted CI are verified separately in the final report.
+
+## Q. Final documentation maintenance: readability review
+
+**Verified 2026-10-29.** Targeted prose edits improved the [main README](../README.md),
+[interview guide](INTERVIEW_GUIDE.md), [demo guide](DEMO_GUIDE.md), [architecture](architecture.md),
+[screenshot gallery](screenshots/README.md) and [future deployment plan](FUTURE_DEPLOYMENT.md).
+The changes clarify the project introduction, technical explanations, demo instructions and
+selected captions, while reducing compressed and repetitive wording.
+
+Architecture decisions, transaction/locking/idempotency rules, Redis/worker behavior, security
+policies, setup/demo commands, technical facts, measured results and caveats are preserved.
+All **14 Mermaid definitions**, **eight validation reports** and **80 PNGs** are unchanged;
+the **73-image gallery** and **five README previews** remain intact. Application source, tests,
+migrations, dependencies, CI configuration and evidence files are unchanged.
+
+Editorial commit: `8588b29b859a185341fbe08689f4aaf56b3bb5fa`.
+Message: `docs: improve readability of project documentation`.
+Its [exact-commit Foundation CI run](https://github.com/ShreyasKowshal/Concurrency-Safe-Reservation-System/actions/runs/40896826446)
+completed/success: **backend, frontend and Compose all passed**.
+
+Prepublication checks passed Markdown lint for **35 files**, **428 local references** including
+**18 fragments and 78 image references**, Mermaid integrity/parsing, screenshot references,
+validation-report hashes, bounded secret/privacy review and `git diff --check`. Both README
+diagrams rendered correctly in Chromium. Published hashes matched all **238 tracked files**;
+authenticated GitHub Markdown rendering retained both diagram blocks and all screenshot images.
+
+Earlier handoff text is preserved in full. There are **no application behavior changes** and
+**no cloud deployment**. Local PostgreSQL data was inspected only through read-only checks.
+Existing limitations remain: private repository access, the minor mobile login heading join,
+screenshot coverage gaps, local Vite serving, and unverified public HTTPS, production performance,
+monitoring and backup/restore operations. This append's publication and independent hosted CI
+are verified separately in the final report. No further optional changes are planned.
