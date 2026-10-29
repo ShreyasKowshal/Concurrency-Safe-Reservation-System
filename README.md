@@ -30,6 +30,20 @@ selected localhost instead of the older cloud roadmap; future public hosting rem
 - React handles session restoration, uncertain retries, countdowns, reservation history,
   organizer event lifecycle, and owner-only booking snapshots.
 
+## Application Screenshots
+
+Captured from the locally running Docker application. CSRS runs locally via
+Docker Compose and is not publicly deployed. Browse the [complete screenshot gallery](docs/screenshots/README.md)
+for organizer workflows, reservation states, final-seat rejection, security, and responsive layouts.
+
+| Landing page | Organizer booking dashboard |
+| --- | --- |
+| ![CSRS landing page](docs/screenshots/01-public/homepage-desktop.png) | ![Organizer dashboard with mixed booking statuses](docs/screenshots/03-organizer/bookings-multiple-statuses.png) |
+| Confirmed reservation | Final-seat rejection |
+| ![Confirmed reservation](docs/screenshots/04-reservations/reservation-confirmed.png) | ![Real final-seat rejection](docs/screenshots/05-concurrency/final-seat-rejected.png) |
+| Worker-recorded expiration | Explore the collection |
+| ![Reservation expired by the independent worker](docs/screenshots/04-reservations/reservation-expired.png) | [Full gallery](docs/screenshots/README.md) · [Coverage and limitations](docs/screenshots/COVERAGE.md) |
+
 ## Stack and architecture
 
 React 19 / TypeScript / Vite; Python 3.12 / FastAPI / SQLAlchemy / Psycopg / Alembic;
