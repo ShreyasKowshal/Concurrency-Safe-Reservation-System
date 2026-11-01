@@ -122,7 +122,7 @@ jobs:
           npm --prefix frontend run test:e2e
       - name: Upload browser failure evidence
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: phase-8-playwright-failure-${{ github.run_id }}
           path: frontend/test-results/
